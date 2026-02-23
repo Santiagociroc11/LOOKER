@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, useDeferredValue } from 'react';
+import React, { useState, useMemo, useEffect, useDeferredValue, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getAvailableTables, processDashboardData } from '@/app/actions/dashboardActions';
 import { saveReport, getReportById } from '@/lib/localStorage';
@@ -25,33 +25,47 @@ function formatCompact(value: number) {
     return Math.round(value).toString();
 }
 
-const MAX_OPTIONS_RENDERED = 40;
+const INITIAL_OPTIONS_SHOWN = 10;
+const MAX_OPTIONS_WHEN_SEARCHING = 40;
 
 function CaptationFilterSelect({ options, value, onChange, placeholder }: { options: string[]; value: string; onChange: (v: string) => void; placeholder: string }) {
     const [search, setSearch] = useState('');
     const [open, setOpen] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
-        if (!q) return options.length <= MAX_OPTIONS_RENDERED ? options : [];
-        return options.filter((o) => o.toLowerCase().includes(q)).slice(0, MAX_OPTIONS_RENDERED);
+        if (!q) return options.slice(0, INITIAL_OPTIONS_SHOWN);
+        return options.filter((o) => o.toLowerCase().includes(q)).slice(0, MAX_OPTIONS_WHEN_SEARCHING);
     }, [options, search]);
     return (
-        <div className="relative min-w-[180px]">
+        <div ref={containerRef} className="relative min-w-[180px]">
             <input
                 type="text"
-                value={open ? search : (value || '')}
-                onChange={(e) => { setSearch(e.target.value); if (!open) setOpen(true); }}
-                onFocus={() => { setOpen(true); setSearch(value || ''); }}
-                onBlur={() => setTimeout(() => { setOpen(false); setSearch(''); }, 150)}
+                value={value || ''}
+                readOnly
+                onClick={() => setOpen((o) => !o)}
+                onBlur={() => setTimeout(() => { if (containerRef.current && !containerRef.current.contains(document.activeElement)) { setOpen(false); setSearch(''); } }, 150)}
                 placeholder={!value ? placeholder : undefined}
-                className="text-sm border border-gray-300 rounded px-3 py-1.5 text-gray-900 bg-white w-full"
+                className="text-sm border border-gray-300 rounded px-3 py-1.5 text-gray-900 bg-white w-full cursor-pointer"
             />
             {open && (
-                <ul className="absolute z-50 mt-1 max-h-48 overflow-y-auto bg-white border border-gray-200 rounded shadow-lg py-1 w-full">
+                <div className="absolute z-50 mt-1 bg-white border border-gray-200 rounded shadow-lg w-full overflow-hidden">
+                    {options.length > INITIAL_OPTIONS_SHOWN && (
+                        <div className="px-3 py-2 border-b border-gray-100 bg-gray-50">
+                            <input
+                                type="text"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                placeholder="Buscar..."
+                                className="text-sm w-full px-2 py-1.5 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                autoFocus
+                                onMouseDown={(e) => e.stopPropagation()}
+                            />
+                        </div>
+                    )}
+                    <ul className="max-h-48 overflow-y-auto py-1">
                     {filtered.length === 0 ? (
-                        <li className="px-3 py-2 text-sm text-gray-500">
-                            {options.length > MAX_OPTIONS_RENDERED && !search.trim() ? 'Escribe para buscar...' : 'Sin resultados'}
-                        </li>
+                        <li className="px-3 py-2 text-sm text-gray-500">Sin resultados</li>
                     ) : (
                         filtered.map((o) => (
                             <li
@@ -63,7 +77,8 @@ function CaptationFilterSelect({ options, value, onChange, placeholder }: { opti
                             </li>
                         ))
                     )}
-                </ul>
+                    </ul>
+                </div>
             )}
         </div>
     );
