@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useDeferredValue } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getAvailableTables, processDashboardData } from '@/app/actions/dashboardActions';
 import { saveReport, getReportById } from '@/lib/localStorage';
@@ -23,6 +23,50 @@ function formatCompact(value: number) {
         return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
     }
     return Math.round(value).toString();
+}
+
+const MAX_OPTIONS_RENDERED = 40;
+
+function CaptationFilterSelect({ options, value, onChange, placeholder }: { options: string[]; value: string; onChange: (v: string) => void; placeholder: string }) {
+    const [search, setSearch] = useState('');
+    const [open, setOpen] = useState(false);
+    const filtered = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        if (!q) return options.length <= MAX_OPTIONS_RENDERED ? options : [];
+        return options.filter((o) => o.toLowerCase().includes(q)).slice(0, MAX_OPTIONS_RENDERED);
+    }, [options, search]);
+    return (
+        <div className="relative min-w-[180px]">
+            <input
+                type="text"
+                value={open ? search : (value || '')}
+                onChange={(e) => { setSearch(e.target.value); if (!open) setOpen(true); }}
+                onFocus={() => { setOpen(true); setSearch(value || ''); }}
+                onBlur={() => setTimeout(() => { setOpen(false); setSearch(''); }, 150)}
+                placeholder={!value ? placeholder : undefined}
+                className="text-sm border border-gray-300 rounded px-3 py-1.5 text-gray-900 bg-white w-full"
+            />
+            {open && (
+                <ul className="absolute z-50 mt-1 max-h-48 overflow-y-auto bg-white border border-gray-200 rounded shadow-lg py-1 w-full">
+                    {filtered.length === 0 ? (
+                        <li className="px-3 py-2 text-sm text-gray-500">
+                            {options.length > MAX_OPTIONS_RENDERED && !search.trim() ? 'Escribe para buscar...' : 'Sin resultados'}
+                        </li>
+                    ) : (
+                        filtered.map((o) => (
+                            <li
+                                key={o}
+                                className={`px-3 py-2 text-sm cursor-pointer hover:bg-indigo-50 ${o === value ? 'bg-indigo-50 font-medium' : ''}`}
+                                onMouseDown={(e) => { e.preventDefault(); onChange(o); setSearch(''); setOpen(false); }}
+                            >
+                                {o}
+                            </li>
+                        ))
+                    )}
+                </ul>
+            )}
+        </div>
+    );
 }
 
 export default function DashboardClient({ initialTables }: { initialTables: string[] }) {
@@ -53,6 +97,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
     const [chartMetrics, setChartMetrics] = useState({ leads: true, sales: true, conversion: true, revenue: true, cpl: false });
     const [captationFilterBy, setCaptationFilterBy] = useState<'todos' | 'anuncio' | 'segmentacion' | 'pais'>('todos');
     const [captationFilterValue, setCaptationFilterValue] = useState<string>('');
+    const deferredCaptationFilterValue = useDeferredValue(captationFilterValue);
 
     const searchParams = useSearchParams();
 
@@ -282,37 +327,53 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
     }, [selectedKeys, selectedDetails, dashboardData]);
 
     const captationFilterOptions = useMemo(() => {
-        const sbr = dashboardData?.salesByRegistrationDate as { date: string; ads?: { anuncio: string; segmentacion: string }[] }[] | undefined;
-        const byCountry = dashboardData?.salesByRegistrationDateByCountry as Record<string, { country: string }[]> | undefined;
-        const anuncios = new Set<string>();
-        const segmentaciones = new Set<string>();
-        const paises = new Set<string>();
+        if (activeTab !== 'captation') return { anuncios: [] as string[], segmentaciones: [] as string[], paises: [] as string[] };
+        const sbr = dashboardData?.salesByRegistrationDate as { date: string; ads?: { anuncio: string; segmentacion: string; gasto?: number }[] }[] | undefined;
+        const byCountry = dashboardData?.salesByRegistrationDateByCountry as Record<string, { country: string; gasto?: number }[]> | undefined;
+        const anunciosGasto: Record<string, number> = {};
+        const segmentacionesGasto: Record<string, number> = {};
+        const paisesGasto: Record<string, number> = {};
         if (sbr) {
             for (const row of sbr) {
                 for (const ad of row.ads || []) {
-                    if (ad.anuncio) anuncios.add(ad.anuncio);
-                    if (ad.segmentacion) segmentaciones.add(ad.segmentacion);
+                    const g = ad.gasto ?? 0;
+                    if (ad.anuncio) {
+                        anunciosGasto[ad.anuncio] = (anunciosGasto[ad.anuncio] ?? 0) + g;
+                    }
+                    if (ad.segmentacion) {
+                        segmentacionesGasto[ad.segmentacion] = (segmentacionesGasto[ad.segmentacion] ?? 0) + g;
+                    }
                 }
             }
         }
         if (byCountry) {
             for (const countries of Object.values(byCountry)) {
-                for (const c of countries) if (c.country) paises.add(c.country);
+                for (const c of countries) {
+                    if (c.country) {
+                        paisesGasto[c.country] = (paisesGasto[c.country] ?? 0) + (c.gasto ?? 0);
+                    }
+                }
             }
         }
-        return {
-            anuncios: Array.from(anuncios).sort(),
-            segmentaciones: Array.from(segmentaciones).sort(),
-            paises: Array.from(paises).sort()
+        const sortByGasto = (a: string, b: string, map: Record<string, number>) => {
+            const ga = map[a] ?? 0;
+            const gb = map[b] ?? 0;
+            if (gb !== ga) return gb - ga;
+            return a.localeCompare(b);
         };
-    }, [dashboardData]);
+        return {
+            anuncios: Object.keys(anunciosGasto).sort((a, b) => sortByGasto(a, b, anunciosGasto)),
+            segmentaciones: Object.keys(segmentacionesGasto).sort((a, b) => sortByGasto(a, b, segmentacionesGasto)),
+            paises: Object.keys(paisesGasto).sort((a, b) => sortByGasto(a, b, paisesGasto))
+        };
+    }, [activeTab, dashboardData?.salesByRegistrationDate, dashboardData?.salesByRegistrationDateByCountry]);
 
     const captationChartData = useMemo(() => {
         const sbr = dashboardData?.salesByRegistrationDate as { date: string; leads: number; sales: number; revenue: number; gasto?: number; ads?: { anuncio: string; segmentacion: string; leads: number; sales: number; revenue: number; gasto: number }[] }[] | undefined;
         const byCountry = dashboardData?.salesByRegistrationDateByCountry as Record<string, { country: string; leads: number; sales: number; revenue: number; gasto: number }[]> | undefined;
         if (!sbr) return [];
 
-        if (captationFilterBy === 'todos' || !captationFilterValue) {
+        if (captationFilterBy === 'todos' || !deferredCaptationFilterValue) {
             return sbr.map((r) => ({
                 ...r,
                 gasto: r.gasto ?? 0
@@ -322,7 +383,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
         if (captationFilterBy === 'anuncio' || captationFilterBy === 'segmentacion') {
             return sbr.map((row) => {
                 const filtered = (row.ads || []).filter((ad) =>
-                    captationFilterBy === 'anuncio' ? ad.anuncio === captationFilterValue : ad.segmentacion === captationFilterValue
+                    captationFilterBy === 'anuncio' ? ad.anuncio === deferredCaptationFilterValue : ad.segmentacion === deferredCaptationFilterValue
                 );
                 const leads = filtered.reduce((s, a) => s + a.leads, 0);
                 const sales = filtered.reduce((s, a) => s + a.sales, 0);
@@ -349,7 +410,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                 .sort()
                 .map((dateStr) => {
                     const countries = byCountry[dateStr] || [];
-                    const match = countries.find((c) => c.country === captationFilterValue);
+                    const match = countries.find((c) => c.country === deferredCaptationFilterValue);
                     if (!match) {
                         return {
                             date: dateStr,
@@ -373,7 +434,32 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
         }
 
         return sbr.map((r) => ({ ...r, gasto: r.gasto ?? 0 }));
-    }, [dashboardData, captationFilterBy, captationFilterValue]);
+    }, [dashboardData, captationFilterBy, deferredCaptationFilterValue]);
+
+    const captationChartDataForRecharts = useMemo(() => {
+        return captationChartData.map((r: any) => ({
+            ...r,
+            label: formatDateShort(r.date),
+            conversion: r.leads > 0 ? Math.round((r.sales / r.leads) * 1000) / 10 : 0,
+            cpl: r.leads > 0 ? (r.gasto ?? 0) / r.leads : 0
+        }));
+    }, [captationChartData]);
+
+    const captationYAxisDomains = useMemo(() => {
+        const convs = captationChartData
+            .map((r: any) => r.leads > 0 ? (r.sales / r.leads) * 100 : 0)
+            .filter((v: number) => v > 0)
+            .sort((a: number, b: number) => a - b);
+        const convMed = convs.length > 0 ? convs[Math.floor(convs.length / 2)] : 0;
+        const convMax = Math.min(100, Math.ceil(Math.max(3, convMed * 2.5)));
+        const cpls = captationChartData
+            .map((r: any) => r.leads > 0 ? (r.gasto ?? 0) / r.leads : 0)
+            .filter((v: number) => v > 0)
+            .sort((a: number, b: number) => a - b);
+        const cplMed = cpls.length > 0 ? cpls[Math.floor(cpls.length / 2)] : 0;
+        const cplMax = Math.min(100000, Math.ceil(Math.max(1, cplMed * 2.5)));
+        return { convMax, cplMax };
+    }, [captationChartData]);
 
     const handleMainRowClick = (key: string, e: React.MouseEvent) => {
         const currentArray = sortedMainList;
@@ -964,16 +1050,12 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                     {captationFilterOptions.paises.length > 0 && <option value="pais">País</option>}
                                 </select>
                                 {captationFilterBy !== 'todos' && (
-                                    <select
+                                    <CaptationFilterSelect
+                                        options={captationFilterBy === 'anuncio' ? captationFilterOptions.anuncios : captationFilterBy === 'segmentacion' ? captationFilterOptions.segmentaciones : captationFilterOptions.paises}
                                         value={captationFilterValue}
-                                        onChange={(e) => setCaptationFilterValue(e.target.value)}
-                                        className="text-sm border border-gray-300 rounded px-3 py-1.5 text-gray-900 bg-white min-w-[180px]"
-                                    >
-                                        <option value="">-- Selecciona {captationFilterBy === 'anuncio' ? 'anuncio' : captationFilterBy === 'segmentacion' ? 'segmentación' : 'país'} --</option>
-                                        {captationFilterBy === 'anuncio' && captationFilterOptions.anuncios.map((a) => <option key={a} value={a}>{a}</option>)}
-                                        {captationFilterBy === 'segmentacion' && captationFilterOptions.segmentaciones.map((s) => <option key={s} value={s}>{s}</option>)}
-                                        {captationFilterBy === 'pais' && captationFilterOptions.paises.map((p) => <option key={p} value={p}>{p}</option>)}
-                                    </select>
+                                        onChange={setCaptationFilterValue}
+                                        placeholder={`Selecciona ${captationFilterBy === 'anuncio' ? 'anuncio' : captationFilterBy === 'segmentacion' ? 'segmentación' : 'país'}`}
+                                    />
                                 )}
                             </div>
                             <div className="flex flex-wrap gap-4 mb-4">
@@ -1001,12 +1083,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                             <div className="h-[400px] w-full mb-6">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <ComposedChart
-                                        data={captationChartData.map((r: any) => ({
-                                            ...r,
-                                            label: formatDateShort(r.date),
-                                            conversion: r.leads > 0 ? Math.round((r.sales / r.leads) * 1000) / 10 : 0,
-                                            cpl: r.leads > 0 ? (r.gasto ?? 0) / r.leads : 0
-                                        }))}
+                                        data={captationChartDataForRecharts}
                                         margin={{ top: 20, right: 165, left: 20, bottom: 60 }}
                                     >
                                         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -1016,15 +1093,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                         <YAxis
                                             yAxisId="right2"
                                             orientation="right"
-                                            domain={[0, (() => {
-                                                const convs = captationChartData
-                                                    .map((r: any) => r.leads > 0 ? (r.sales / r.leads) * 100 : 0)
-                                                    .filter((v: number) => v > 0)
-                                                    .sort((a: number, b: number) => a - b);
-                                                const med = convs.length > 0 ? convs[Math.floor(convs.length / 2)] : 0;
-                                                const scaleMax = Math.ceil(Math.max(3, med * 2.5));
-                                                return Math.min(100, scaleMax);
-                                            })()]}
+                                            domain={[0, captationYAxisDomains.convMax]}
                                             allowDataOverflow
                                             tick={{ fontSize: 10 }}
                                             tickFormatter={(v) => `${v}%`}
@@ -1035,15 +1104,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                         <YAxis
                                             yAxisId="cpl"
                                             orientation="right"
-                                            domain={[0, (() => {
-                                                const cpls = captationChartData
-                                                    .map((r: any) => r.leads > 0 ? (r.gasto ?? 0) / r.leads : 0)
-                                                    .filter((v: number) => v > 0)
-                                                    .sort((a: number, b: number) => a - b);
-                                                const med = cpls.length > 0 ? cpls[Math.floor(cpls.length / 2)] : 0;
-                                                const scaleMax = Math.ceil(Math.max(1, med * 2.5));
-                                                return Math.min(100000, scaleMax);
-                                            })()]}
+                                            domain={[0, captationYAxisDomains.cplMax]}
                                             allowDataOverflow
                                             tick={{ fontSize: 10 }}
                                             tickFormatter={(v) => formatCompact(v)}
