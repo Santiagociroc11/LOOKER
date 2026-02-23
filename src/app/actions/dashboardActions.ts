@@ -113,8 +113,9 @@ async function getPurchasesByDaysSinceRegistration(
 async function getSalesByRegistrationDate(
     baseTable: string,
     salesTable: string,
-    multiplyRevenue: boolean
-): Promise<{ date: string; leads: number; sales: number; revenue: number; ads?: { anuncio: string; segmentacion: string; leads: number; sales: number; revenue: number }[] }[] | null> {
+    multiplyRevenue: boolean,
+    segmentationsData?: Record<string, { spend: number }>
+): Promise<{ date: string; leads: number; sales: number; revenue: number; ads?: { anuncio: string; segmentacion: string; leads: number; sales: number; revenue: number; gasto: number; roas: number }[] }[] | null> {
     const regDateCandidates = ['FECHA_REGISTRO', 'FECHA', 'FECHA_CAPTACION', 'FECHA_REGISTO', 'fecha_registro', 'created_at'];
     const regCol = await getDateColumn(baseTable, regDateCandidates);
     if (!regCol) return null;
@@ -165,17 +166,23 @@ async function getSalesByRegistrationDate(
             ORDER BY fecha_reg ASC, revenue DESC
         `;
         const [adsRows] = await pool.query<any[]>(adsQuery);
-        const adsByDate: Record<string, { anuncio: string; segmentacion: string; leads: number; sales: number; revenue: number }[]> = {};
+        const adsByDate: Record<string, { anuncio: string; segmentacion: string; leads: number; sales: number; revenue: number; gasto: number; roas: number }[]> = {};
         for (const r of adsRows) {
             const raw = r.fecha_reg;
             const dateStr = raw instanceof Date ? raw.toISOString().slice(0, 10) : raw ? String(raw).slice(0, 10) : '';
             if (!adsByDate[dateStr]) adsByDate[dateStr] = [];
+            const spendKey = `${normalizeAdName(r.anuncio)}|${normalizeAdName(r.segmentacion)}`;
+            const gasto = segmentationsData?.[spendKey]?.spend ?? 0;
+            const revenue = parseFloat(r.revenue) || 0;
+            const roas = gasto > 0 ? revenue / gasto : 0;
             adsByDate[dateStr].push({
                 anuncio: cleanDisplayName(r.anuncio) || 'Sin anuncio',
                 segmentacion: cleanDisplayName(r.segmentacion) || 'Sin segmentación',
                 leads: parseInt(r.leads, 10) || 0,
                 sales: parseInt(r.sales, 10) || 0,
-                revenue: parseFloat(r.revenue) || 0
+                revenue,
+                gasto,
+                roas
             });
         }
         return mainData.map((row) => ({
@@ -546,7 +553,7 @@ export async function processDashboardData(formData: FormData) {
         : null;
 
     const captationDaysData = await getPurchasesByDaysSinceRegistration(baseTable, salesTable, multiplyRevenue);
-    const salesByRegistrationDate = await getSalesByRegistrationDate(baseTable, salesTable, multiplyRevenue);
+    const salesByRegistrationDate = await getSalesByRegistrationDate(baseTable, salesTable, multiplyRevenue, segmentationsData);
 
     let countryData: { country: string; gasto: number; roas: number; ventas_organicas: number; ventas_trackeadas: number }[] | null = null;
 

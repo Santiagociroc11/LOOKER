@@ -48,6 +48,8 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
     const [captationView, setCaptationView] = useState<'by_date' | 'by_days'>('by_date');
     const [modalDateRow, setModalDateRow] = useState<{ date: string; ads: any[] } | null>(null);
     const [modalViewBy, setModalViewBy] = useState<'anuncio' | 'segmentacion'>('anuncio');
+    const [modalSortBy, setModalSortBy] = useState<string>('revenue');
+    const [modalSortDir, setModalSortDir] = useState<'asc' | 'desc'>('desc');
 
     const searchParams = useSearchParams();
 
@@ -913,7 +915,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                                 <td className="px-4 py-3 text-center">
                                                     {row.ads && row.ads.length > 0 ? (
                                                         <button
-                                                            onClick={() => { setModalDateRow({ date: row.date, ads: row.ads }); setModalViewBy('anuncio'); }}
+                                                            onClick={() => { setModalDateRow({ date: row.date, ads: row.ads }); setModalViewBy('anuncio'); setModalSortBy('revenue'); setModalSortDir('desc'); }}
                                                             className="p-1.5 rounded text-indigo-600 hover:bg-indigo-50 transition-colors"
                                                             title="Ver anuncios"
                                                         >
@@ -930,23 +932,43 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                             </div>
                             {modalDateRow && (() => {
                                 const grouped = (modalViewBy === 'anuncio'
-                                    ? Object.entries(modalDateRow.ads.reduce((acc: Record<string, { leads: number; sales: number; revenue: number }>, ad: any) => {
+                                    ? Object.entries(modalDateRow.ads.reduce((acc: Record<string, { leads: number; sales: number; revenue: number; gasto: number }>, ad: any) => {
                                         const k = ad.anuncio || 'Sin anuncio';
-                                        if (!acc[k]) acc[k] = { leads: 0, sales: 0, revenue: 0 };
+                                        if (!acc[k]) acc[k] = { leads: 0, sales: 0, revenue: 0, gasto: 0 };
                                         acc[k].leads += ad.leads;
                                         acc[k].sales += ad.sales;
-                                        acc[k].revenue += ad.revenue;
+                                        acc[k].revenue += (ad.revenue ?? 0);
+                                        acc[k].gasto += (ad.gasto ?? 0);
                                         return acc;
-                                    }, {})).map(([name, data]) => ({ name, ...data }))
-                                    : Object.entries(modalDateRow.ads.reduce((acc: Record<string, { leads: number; sales: number; revenue: number }>, ad: any) => {
+                                    }, {})).map(([name, data]) => ({ name, ...data, roas: data.gasto > 0 ? data.revenue / data.gasto : 0 }))
+                                    : Object.entries(modalDateRow.ads.reduce((acc: Record<string, { leads: number; sales: number; revenue: number; gasto: number }>, ad: any) => {
                                         const k = ad.segmentacion || 'Sin segmentación';
-                                        if (!acc[k]) acc[k] = { leads: 0, sales: 0, revenue: 0 };
+                                        if (!acc[k]) acc[k] = { leads: 0, sales: 0, revenue: 0, gasto: 0 };
                                         acc[k].leads += ad.leads;
                                         acc[k].sales += ad.sales;
-                                        acc[k].revenue += ad.revenue;
+                                        acc[k].revenue += (ad.revenue ?? 0);
+                                        acc[k].gasto += (ad.gasto ?? 0);
                                         return acc;
-                                    }, {})).map(([name, data]) => ({ name, ...data }))
-                                ).sort((a: any, b: any) => b.revenue - a.revenue);
+                                    }, {})).map(([name, data]) => ({ name, ...data, roas: data.gasto > 0 ? data.revenue / data.gasto : 0 }))
+                                );
+                                const sorted = [...grouped].sort((a: any, b: any) => {
+                                    const va = a[modalSortBy];
+                                    const vb = b[modalSortBy];
+                                    const cmp = typeof va === 'string' ? (va ?? '').localeCompare(vb ?? '') : (Number(va) ?? 0) - (Number(vb) ?? 0);
+                                    return modalSortDir === 'asc' ? cmp : -cmp;
+                                });
+                                const toggleModalSort = (key: string) => {
+                                    if (modalSortBy === key) setModalSortDir(d => d === 'asc' ? 'desc' : 'asc');
+                                    else { setModalSortBy(key); setModalSortDir('desc'); }
+                                };
+                                const cols = [
+                                    { key: 'name', label: modalViewBy === 'anuncio' ? 'Anuncio' : 'Segmentación', align: 'left' as const },
+                                    { key: 'leads', label: 'Registros', align: 'right' as const },
+                                    { key: 'sales', label: 'Compraron', align: 'right' as const },
+                                    { key: 'gasto', label: 'Gasto', align: 'right' as const },
+                                    { key: 'revenue', label: 'Ingresos', align: 'right' as const },
+                                    { key: 'roas', label: 'ROAS', align: 'right' as const },
+                                ];
                                 return (
                                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setModalDateRow(null)}>
                                     <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -975,19 +997,33 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                             <table className="w-full text-sm">
                                                 <thead className="bg-gray-50 sticky top-0">
                                                     <tr>
-                                                        <th className="px-4 py-2 text-left font-semibold text-gray-800">{modalViewBy === 'anuncio' ? 'Anuncio' : 'Segmentación'}</th>
-                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">Registros</th>
-                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">Compraron</th>
-                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">Ingresos</th>
+                                                        {cols.map(({ key, label, align }) => (
+                                                            <th
+                                                                key={key}
+                                                                className={`px-4 py-2 font-semibold text-gray-800 cursor-pointer select-none hover:bg-gray-100 transition-colors ${align === 'right' ? 'text-right' : 'text-left'}`}
+                                                                onClick={() => toggleModalSort(key)}
+                                                            >
+                                                                <span className="inline-flex items-center gap-1">
+                                                                    {label}
+                                                                    {modalSortBy === key && (
+                                                                        <span className="text-indigo-600">{modalSortDir === 'asc' ? '↑' : '↓'}</span>
+                                                                    )}
+                                                                </span>
+                                                            </th>
+                                                        ))}
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-200">
-                                                    {grouped.map((row: any, i: number) => (
+                                                    {sorted.map((row: any, i: number) => (
                                                         <tr key={i} className="hover:bg-gray-50">
                                                             <td className="px-4 py-2 font-medium text-gray-900">{row.name}</td>
                                                             <td className="px-4 py-2 text-right text-gray-700">{row.leads}</td>
                                                             <td className="px-4 py-2 text-right font-semibold text-indigo-600">{row.sales}</td>
+                                                            <td className="px-4 py-2 text-right text-red-600">{formatCurrency(row.gasto)}</td>
                                                             <td className="px-4 py-2 text-right text-green-600">{formatCurrency(row.revenue)}</td>
+                                                            <td className={`px-4 py-2 text-right font-bold ${row.roas >= 2 ? 'text-green-600' : row.roas >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                                                {row.roas.toFixed(2)}x
+                                                            </td>
                                                         </tr>
                                                     ))}
                                                 </tbody>
