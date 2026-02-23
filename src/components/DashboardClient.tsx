@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { getAvailableTables, processDashboardData } from '@/app/actions/dashboardActions';
 import { saveReport, getReportById } from '@/lib/localStorage';
 import { RefreshCw, ChevronDown, X } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 function formatCurrency(value: number) {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
@@ -47,6 +47,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
     const [countrySortDir, setCountrySortDir] = useState<'asc' | 'desc'>('desc');
     const [captationView, setCaptationView] = useState<'by_date' | 'by_days'>('by_date');
     const [modalDateRow, setModalDateRow] = useState<{ date: string; ads: any[] } | null>(null);
+    const [modalViewBy, setModalViewBy] = useState<'anuncio' | 'segmentacion'>('anuncio');
 
     const searchParams = useSearchParams();
 
@@ -853,10 +854,20 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                             </p>
                             <div className="h-[400px] w-full mb-6">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={dashboardData.salesByRegistrationDate.map((r: any) => ({ ...r, label: formatDateShort(r.date) }))} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                                    <ComposedChart
+                                        data={dashboardData.salesByRegistrationDate.map((r: any) => ({
+                                            ...r,
+                                            label: formatDateShort(r.date),
+                                            conversion: r.leads > 0 ? Math.round((r.sales / r.leads) * 1000) / 10 : 0
+                                        }))}
+                                        margin={{ top: 20, right: 120, left: 20, bottom: 60 }}
+                                    >
                                         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                                         <XAxis dataKey="label" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={80} />
-                                        <YAxis tick={{ fontSize: 11 }} />
+                                        <YAxis yAxisId="left" tick={{ fontSize: 11 }} label={{ value: 'Registros', angle: -90, position: 'insideLeft' }} />
+                                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} label={{ value: 'Compraron', angle: 90, position: 'insideRight' }} />
+                                        <YAxis yAxisId="right2" orientation="right" domain={[0, 100]} tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}%`} width={45} label={{ value: 'Conv. %', angle: 90, position: 'insideRight', offset: 0 }} />
+                                        <YAxis yAxisId="ingresos" orientation="right" tick={{ fontSize: 10 }} tickFormatter={(v) => formatCompact(v)} width={50} />
                                         <Tooltip content={({ active, payload }) => {
                                             if (!active || !payload?.length) return null;
                                             const d = payload[0]?.payload;
@@ -872,9 +883,11 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                             );
                                         }} />
                                         <Legend />
-                                        <Bar dataKey="leads" name="Registros" fill="#94a3b8" radius={[4, 4, 0, 0]} />
-                                        <Bar dataKey="sales" name="Compraron" fill="#6366f1" radius={[4, 4, 0, 0]} />
-                                    </BarChart>
+                                        <Bar yAxisId="left" dataKey="leads" name="Registros" fill="#94a3b8" radius={[4, 4, 0, 0]} />
+                                        <Bar yAxisId="right" dataKey="sales" name="Compraron" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                                        <Line yAxisId="right2" type="monotone" dataKey="conversion" name="Conversión %" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />
+                                        <Line yAxisId="ingresos" type="monotone" dataKey="revenue" name="Ingresos" stroke="#eab308" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="5 5" />
+                                    </ComposedChart>
                                 </ResponsiveContainer>
                             </div>
                             <div className="overflow-x-auto">
@@ -900,7 +913,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                                 <td className="px-4 py-3 text-center">
                                                     {row.ads && row.ads.length > 0 ? (
                                                         <button
-                                                            onClick={() => setModalDateRow({ date: row.date, ads: row.ads })}
+                                                            onClick={() => { setModalDateRow({ date: row.date, ads: row.ads }); setModalViewBy('anuncio'); }}
                                                             className="p-1.5 rounded text-indigo-600 hover:bg-indigo-50 transition-colors"
                                                             title="Ver anuncios"
                                                         >
@@ -915,34 +928,66 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                     </tbody>
                                 </table>
                             </div>
-                            {modalDateRow && (
+                            {modalDateRow && (() => {
+                                const grouped = (modalViewBy === 'anuncio'
+                                    ? Object.entries(modalDateRow.ads.reduce((acc: Record<string, { leads: number; sales: number; revenue: number }>, ad: any) => {
+                                        const k = ad.anuncio || 'Sin anuncio';
+                                        if (!acc[k]) acc[k] = { leads: 0, sales: 0, revenue: 0 };
+                                        acc[k].leads += ad.leads;
+                                        acc[k].sales += ad.sales;
+                                        acc[k].revenue += ad.revenue;
+                                        return acc;
+                                    }, {})).map(([name, data]) => ({ name, ...data }))
+                                    : Object.entries(modalDateRow.ads.reduce((acc: Record<string, { leads: number; sales: number; revenue: number }>, ad: any) => {
+                                        const k = ad.segmentacion || 'Sin segmentación';
+                                        if (!acc[k]) acc[k] = { leads: 0, sales: 0, revenue: 0 };
+                                        acc[k].leads += ad.leads;
+                                        acc[k].sales += ad.sales;
+                                        acc[k].revenue += ad.revenue;
+                                        return acc;
+                                    }, {})).map(([name, data]) => ({ name, ...data }))
+                                ).sort((a: any, b: any) => b.revenue - a.revenue);
+                                return (
                                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setModalDateRow(null)}>
                                     <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
                                         <div className="flex items-center justify-between p-4 border-b">
-                                            <h3 className="text-lg font-semibold text-gray-900">Anuncios del {formatDateShort(modalDateRow.date)}</h3>
-                                            <button onClick={() => setModalDateRow(null)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-600">
-                                                <X className="h-5 w-5" />
-                                            </button>
+                                            <h3 className="text-lg font-semibold text-gray-900">Detalle del {formatDateShort(modalDateRow.date)}</h3>
+                                            <div className="flex items-center gap-4">
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <span className="text-sm font-medium text-gray-700">Anuncio</span>
+                                                    <button
+                                                        type="button"
+                                                        role="switch"
+                                                        aria-checked={modalViewBy === 'segmentacion'}
+                                                        onClick={() => setModalViewBy(v => v === 'anuncio' ? 'segmentacion' : 'anuncio')}
+                                                        className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${modalViewBy === 'segmentacion' ? 'bg-indigo-600' : 'bg-gray-200'}`}
+                                                    >
+                                                        <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${modalViewBy === 'segmentacion' ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                                                    </button>
+                                                    <span className="text-sm font-medium text-gray-700">Segmentación</span>
+                                                </label>
+                                                <button onClick={() => setModalDateRow(null)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-600">
+                                                    <X className="h-5 w-5" />
+                                                </button>
+                                            </div>
                                         </div>
                                         <div className="overflow-auto max-h-[60vh]">
                                             <table className="w-full text-sm">
                                                 <thead className="bg-gray-50 sticky top-0">
                                                     <tr>
-                                                        <th className="px-4 py-2 text-left font-semibold text-gray-800">Anuncio</th>
-                                                        <th className="px-4 py-2 text-left font-semibold text-gray-800">Segmentación</th>
+                                                        <th className="px-4 py-2 text-left font-semibold text-gray-800">{modalViewBy === 'anuncio' ? 'Anuncio' : 'Segmentación'}</th>
                                                         <th className="px-4 py-2 text-right font-semibold text-gray-800">Registros</th>
                                                         <th className="px-4 py-2 text-right font-semibold text-gray-800">Compraron</th>
                                                         <th className="px-4 py-2 text-right font-semibold text-gray-800">Ingresos</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-200">
-                                                    {modalDateRow.ads.map((ad: any, i: number) => (
+                                                    {grouped.map((row: any, i: number) => (
                                                         <tr key={i} className="hover:bg-gray-50">
-                                                            <td className="px-4 py-2 text-gray-900">{ad.anuncio}</td>
-                                                            <td className="px-4 py-2 text-gray-700">{ad.segmentacion}</td>
-                                                            <td className="px-4 py-2 text-right text-gray-700">{ad.leads}</td>
-                                                            <td className="px-4 py-2 text-right font-semibold text-indigo-600">{ad.sales}</td>
-                                                            <td className="px-4 py-2 text-right text-green-600">{formatCurrency(ad.revenue)}</td>
+                                                            <td className="px-4 py-2 font-medium text-gray-900">{row.name}</td>
+                                                            <td className="px-4 py-2 text-right text-gray-700">{row.leads}</td>
+                                                            <td className="px-4 py-2 text-right font-semibold text-indigo-600">{row.sales}</td>
+                                                            <td className="px-4 py-2 text-right text-green-600">{formatCurrency(row.revenue)}</td>
                                                         </tr>
                                                     ))}
                                                 </tbody>
@@ -950,7 +995,8 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                         </div>
                                     </div>
                                 </div>
-                            )}
+                                );
+                            })()}
                         </div>
                         )}
 
