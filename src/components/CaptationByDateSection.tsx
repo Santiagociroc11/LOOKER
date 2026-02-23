@@ -185,32 +185,26 @@ export default function CaptationByDateSection({ salesByRegistrationDate: sbr, s
         return sbr.map((r) => ({ ...r, gasto: r.gasto ?? 0 }));
     }, [sbr, byCountry, captationFilterBy, captationFilterValue, captationByAnuncio, captationBySegmentacion, captationByPais]);
 
-    const { chartDataForRecharts, leadsMax, salesMax, convMax, cplMax } = useMemo(() => {
+    const { chartDataForRecharts, convMax, cplMax } = useMemo(() => {
         const data = captationChartData.map((r: any) => ({
             ...r,
             label: formatDateShort(r.date),
             conversion: r.leads > 0 ? Math.round((r.sales / r.leads) * 1000) / 10 : 0,
             cpl: r.leads > 0 ? (r.gasto ?? 0) / r.leads : 0
         }));
-        const leadsArr = captationChartData.map((r: any) => r.leads ?? 0);
-        const salesArr = captationChartData.map((r: any) => r.sales ?? 0);
-        const leadsMax = Math.max(1, ...leadsArr);
-        const salesMax = Math.max(1, ...salesArr);
         const convs = captationChartData
             .map((r: any) => r.leads > 0 ? (r.sales / r.leads) * 100 : 0)
             .filter((v: number) => v > 0)
             .sort((a: number, b: number) => a - b);
         const convMed = convs.length > 0 ? convs[Math.floor(convs.length / 2)] : 0;
-        const convActualMax = convs.length > 0 ? Math.max(...convs) : 0;
-        const convMax = Math.min(100, Math.ceil(Math.max(3, convMed * 2.5, convActualMax * 1.15)));
+        const convMax = Math.min(100, Math.ceil(Math.max(3, convMed * 3.5)));
         const cpls = captationChartData
             .map((r: any) => r.leads > 0 ? (r.gasto ?? 0) / r.leads : 0)
             .filter((v: number) => v > 0)
             .sort((a: number, b: number) => a - b);
         const cplMed = cpls.length > 0 ? cpls[Math.floor(cpls.length / 2)] : 0;
-        const cplActualMax = cpls.length > 0 ? Math.max(...cpls) : 0;
-        const cplMax = Math.min(100000, Math.ceil(Math.max(1, cplMed * 2.5, cplActualMax * 1.15)));
-        return { chartDataForRecharts: data, leadsMax, salesMax, convMax, cplMax };
+        const cplMax = Math.min(100000, Math.ceil(Math.max(1, cplMed * 3.5)));
+        return { chartDataForRecharts: data, convMax, cplMax };
     }, [captationChartData]);
 
     return (
@@ -252,11 +246,11 @@ export default function CaptationByDateSection({ salesByRegistrationDate: sbr, s
             </div>
             <div className="h-[400px] w-full mb-6">
                 <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart key={`${captationFilterBy}-${captationFilterValue}`} data={chartDataForRecharts} margin={{ top: 20, right: 180, left: 20, bottom: 60 }}>
+                    <ComposedChart key={`${captationFilterBy}-${captationFilterValue}`} data={chartDataForRecharts} margin={{ top: 20, right: 165, left: 20, bottom: 60 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                         <XAxis dataKey="label" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={80} />
-                        <YAxis yAxisId="left" domain={[0, Math.ceil(leadsMax * 1.1)]} tick={{ fontSize: 11 }} label={{ value: 'Registros', angle: -90, position: 'insideLeft' }} />
-                        <YAxis yAxisId="right" orientation="right" domain={[0, Math.ceil(salesMax * 1.1)]} tick={{ fontSize: 11 }} label={{ value: 'Compraron', angle: 90, position: 'insideRight' }} />
+                        <YAxis yAxisId="left" tick={{ fontSize: 11 }} label={{ value: 'Registros', angle: -90, position: 'insideLeft' }} />
+                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} label={{ value: 'Compraron', angle: 90, position: 'insideRight' }} />
                         <YAxis yAxisId="right2" orientation="right" domain={[0, convMax]} allowDataOverflow tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}%`} width={45} label={{ value: 'Conv. %', angle: 90, position: 'insideRight', offset: 0 }} />
                         <YAxis yAxisId="ingresos" orientation="right" tick={{ fontSize: 10 }} tickFormatter={(v) => formatCompact(v)} width={50} />
                         <YAxis yAxisId="cpl" orientation="right" domain={[0, cplMax]} allowDataOverflow tick={{ fontSize: 10 }} tickFormatter={(v) => formatCompact(v)} width={45} />
