@@ -50,7 +50,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
     const [modalViewBy, setModalViewBy] = useState<'anuncio' | 'segmentacion'>('anuncio');
     const [modalSortBy, setModalSortBy] = useState<string>('revenue');
     const [modalSortDir, setModalSortDir] = useState<'asc' | 'desc'>('desc');
-    const [chartMetrics, setChartMetrics] = useState({ leads: true, sales: true, conversion: true, revenue: true });
+    const [chartMetrics, setChartMetrics] = useState({ leads: true, sales: true, conversion: true, revenue: true, cpl: false });
 
     const searchParams = useSearchParams();
 
@@ -872,19 +872,21 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                     <input type="checkbox" checked={chartMetrics.revenue} onChange={(e) => setChartMetrics(m => ({ ...m, revenue: e.target.checked }))} className="rounded" />
                                     <span className="text-sm font-medium text-gray-700">Ingresos</span>
                                 </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" checked={chartMetrics.cpl} onChange={(e) => setChartMetrics(m => ({ ...m, cpl: e.target.checked }))} className="rounded" />
+                                    <span className="text-sm font-medium text-gray-700">Costo por Lead</span>
+                                </label>
                             </div>
                             <div className="h-[400px] w-full mb-6">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <ComposedChart
-                                        data={(() => {
-                                            const mapped = dashboardData.salesByRegistrationDate.map((r: any) => ({
-                                                ...r,
-                                                label: formatDateShort(r.date),
-                                                conversion: r.leads > 0 ? Math.round((r.sales / r.leads) * 1000) / 10 : 0
-                                            }));
-                                            return mapped;
-                                        })()}
-                                        margin={{ top: 20, right: 120, left: 20, bottom: 60 }}
+                                        data={dashboardData.salesByRegistrationDate.map((r: any) => ({
+                                            ...r,
+                                            label: formatDateShort(r.date),
+                                            conversion: r.leads > 0 ? Math.round((r.sales / r.leads) * 1000) / 10 : 0,
+                                            cpl: r.leads > 0 ? (r.gasto ?? 0) / r.leads : 0
+                                        }))}
+                                        margin={{ top: 20, right: 165, left: 20, bottom: 60 }}
                                     >
                                         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                                         <XAxis dataKey="label" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={80} />
@@ -893,7 +895,15 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                         <YAxis
                                             yAxisId="right2"
                                             orientation="right"
-                                            domain={[0, 2]}
+                                            domain={[0, (() => {
+                                                const convs = dashboardData.salesByRegistrationDate
+                                                    .map((r: any) => r.leads > 0 ? (r.sales / r.leads) * 100 : 0)
+                                                    .filter((v: number) => v > 0)
+                                                    .sort((a: number, b: number) => a - b);
+                                                const med = convs.length > 0 ? convs[Math.floor(convs.length / 2)] : 0;
+                                                const scaleMax = Math.ceil(Math.max(3, med * 2.5));
+                                                return Math.min(100, scaleMax);
+                                            })()]}
                                             allowDataOverflow
                                             tick={{ fontSize: 10 }}
                                             tickFormatter={(v) => `${v}%`}
@@ -901,6 +911,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                             label={{ value: 'Conv. %', angle: 90, position: 'insideRight', offset: 0 }}
                                         />
                                         <YAxis yAxisId="ingresos" orientation="right" tick={{ fontSize: 10 }} tickFormatter={(v) => formatCompact(v)} width={50} />
+                                        <YAxis yAxisId="cpl" orientation="right" tick={{ fontSize: 10 }} tickFormatter={(v) => formatCompact(v)} width={45} />
                                         <Tooltip content={({ active, payload }) => {
                                             if (!active || !payload?.length) return null;
                                             const d = payload[0]?.payload;
@@ -912,6 +923,8 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                                     <p>Compraron: <strong>{d?.sales ?? 0}</strong></p>
                                                     <p>Conversión: <strong>{conv}%</strong></p>
                                                     <p>Ingresos: <strong>{formatCurrency(d?.revenue ?? 0)}</strong></p>
+                                                    <p>Gasto: <strong>{formatCurrency(d?.gasto ?? 0)}</strong></p>
+                                                    <p>Costo por Lead: <strong>{formatCurrency(d?.cpl ?? 0)}</strong></p>
                                                 </div>
                                             );
                                         }} />
@@ -920,6 +933,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                         {chartMetrics.sales && <Bar yAxisId="right" dataKey="sales" name="Compraron" fill="#6366f1" radius={[4, 4, 0, 0]} />}
                                         {chartMetrics.conversion && <Line yAxisId="right2" type="monotone" dataKey="conversion" name="Conversión %" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />}
                                         {chartMetrics.revenue && <Line yAxisId="ingresos" type="monotone" dataKey="revenue" name="Ingresos" stroke="#eab308" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="5 5" />}
+                                        {chartMetrics.cpl && <Line yAxisId="cpl" type="monotone" dataKey="cpl" name="Costo por Lead" stroke="#f97316" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="3 3" />}
                                     </ComposedChart>
                                 </ResponsiveContainer>
                             </div>
@@ -931,6 +945,8 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                             <th className="px-4 py-3 text-right font-semibold text-gray-800">Registros</th>
                                             <th className="px-4 py-3 text-right font-semibold text-gray-800">Compraron</th>
                                             <th className="px-4 py-3 text-right font-semibold text-gray-800">Conversión</th>
+                                            <th className="px-4 py-3 text-right font-semibold text-gray-800">Gasto</th>
+                                            <th className="px-4 py-3 text-right font-semibold text-gray-800">Costo/Lead</th>
                                             <th className="px-4 py-3 text-right font-semibold text-gray-800">Ingresos</th>
                                             <th className="px-4 py-3 text-center font-semibold text-gray-800 w-12"></th>
                                         </tr>
@@ -942,6 +958,8 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                                 <td className="px-4 py-3 text-right text-gray-700">{row.leads}</td>
                                                 <td className="px-4 py-3 text-right font-semibold text-indigo-600">{row.sales}</td>
                                                 <td className="px-4 py-3 text-right">{row.leads > 0 ? ((row.sales / row.leads) * 100).toFixed(1) : 0}%</td>
+                                                <td className="px-4 py-3 text-right text-red-600">{formatCurrency(row.gasto ?? 0)}</td>
+                                                <td className="px-4 py-3 text-right text-orange-600">{formatCurrency(row.cpl ?? 0)}</td>
                                                 <td className="px-4 py-3 text-right text-green-600">{formatCurrency(row.revenue)}</td>
                                                 <td className="px-4 py-3 text-center">
                                                     {row.ads && row.ads.length > 0 ? (
@@ -971,7 +989,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                         acc[k].revenue += (ad.revenue ?? 0);
                                         acc[k].gasto += (ad.gasto ?? 0);
                                         return acc;
-                                    }, {})).map(([name, data]) => ({ name, ...data, roas: data.gasto > 0 ? data.revenue / data.gasto : 0 }))
+                                    }, {})).map(([name, data]) => ({ name, ...data, roas: data.gasto > 0 ? data.revenue / data.gasto : 0, cpl: data.leads > 0 ? data.gasto / data.leads : 0 }))
                                     : Object.entries(modalDateRow.ads.reduce((acc: Record<string, { leads: number; sales: number; revenue: number; gasto: number }>, ad: any) => {
                                         const k = ad.segmentacion || 'Sin segmentación';
                                         if (!acc[k]) acc[k] = { leads: 0, sales: 0, revenue: 0, gasto: 0 };
@@ -980,7 +998,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                         acc[k].revenue += (ad.revenue ?? 0);
                                         acc[k].gasto += (ad.gasto ?? 0);
                                         return acc;
-                                    }, {})).map(([name, data]) => ({ name, ...data, roas: data.gasto > 0 ? data.revenue / data.gasto : 0 }))
+                                    }, {})).map(([name, data]) => ({ name, ...data, roas: data.gasto > 0 ? data.revenue / data.gasto : 0, cpl: data.leads > 0 ? data.gasto / data.leads : 0 }))
                                 );
                                 const sorted = [...grouped].sort((a: any, b: any) => {
                                     const va = a[modalSortBy];
@@ -997,6 +1015,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                     { key: 'leads', label: 'Registros', align: 'right' as const },
                                     { key: 'sales', label: 'Compraron', align: 'right' as const },
                                     { key: 'gasto', label: 'Gasto', align: 'right' as const },
+                                    { key: 'cpl', label: 'Costo/Lead', align: 'right' as const },
                                     { key: 'revenue', label: 'Ingresos', align: 'right' as const },
                                     { key: 'roas', label: 'ROAS', align: 'right' as const },
                                 ];
@@ -1051,6 +1070,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                                             <td className="px-4 py-2 text-right text-gray-700">{row.leads}</td>
                                                             <td className="px-4 py-2 text-right font-semibold text-indigo-600">{row.sales}</td>
                                                             <td className="px-4 py-2 text-right text-red-600">{formatCurrency(row.gasto)}</td>
+                                                            <td className="px-4 py-2 text-right text-orange-600">{formatCurrency(row.cpl)}</td>
                                                             <td className="px-4 py-2 text-right text-green-600">{formatCurrency(row.revenue)}</td>
                                                             <td className={`px-4 py-2 text-right font-bold ${row.roas >= 2 ? 'text-green-600' : row.roas >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>
                                                                 {row.roas.toFixed(2)}x

@@ -146,7 +146,9 @@ async function getSalesByRegistrationDate(
                 date: dateStr,
                 leads: parseInt(r.total_leads, 10) || 0,
                 sales: parseInt(r.total_sales, 10) || 0,
-                revenue: parseFloat(r.total_revenue) || 0
+                revenue: parseFloat(r.total_revenue) || 0,
+                gasto: 0,
+                cpl: 0
             };
         });
 
@@ -186,10 +188,17 @@ async function getSalesByRegistrationDate(
                 roas
             });
         }
-        return mainData.map((row) => ({
-            ...row,
-            ads: adsByDate[row.date] || []
-        }));
+        return mainData.map((row) => {
+            const ads = adsByDate[row.date] || [];
+            const gasto = ads.reduce((s, a) => s + (a.gasto || 0), 0);
+            const cpl = row.leads > 0 ? gasto / row.leads : 0;
+            return {
+                ...row,
+                gasto,
+                cpl,
+                ads
+            };
+        });
     } catch (error) {
         console.error('Error getSalesByRegistrationDate:', error);
         return null;
