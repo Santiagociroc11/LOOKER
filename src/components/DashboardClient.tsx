@@ -429,14 +429,12 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                 Vista de Países
                             </button>
                         )}
-                        {dashboardData.captationDaysData && dashboardData.captationDaysData.length > 0 && (
-                            <button
-                                onClick={() => setActiveTab('captation')}
-                                className={`py-4 px-1 text-sm font-medium border-b-2 ${activeTab === 'captation' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-700 hover:text-gray-900'}`}
-                            >
-                                Días de Captación
-                            </button>
-                        )}
+                        <button
+                            onClick={() => setActiveTab('captation')}
+                            className={`py-4 px-1 text-sm font-medium border-b-2 ${activeTab === 'captation' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-700 hover:text-gray-900'}`}
+                        >
+                            Días desde Registro
+                        </button>
                     </nav>
                 </div>
 
@@ -448,9 +446,17 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                     <h3 className="font-semibold text-gray-900">Perspectiva de Análisis</h3>
                                     <p className="text-sm text-gray-700">Cambia cómo analizas tus datos</p>
                                 </div>
-                                <label className="flex items-center gap-2 cursor-pointer">
+                                <label className="flex items-center gap-3 cursor-pointer">
                                     <span className="text-sm font-medium text-gray-800">Anuncio → Segmentaciones</span>
-                                    <input type="checkbox" checked={perspective === 'segments'} onChange={(e) => { setPerspective(e.target.checked ? 'segments' : 'ads'); setSelectedKeys(new Set()); }} className="rounded" />
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={perspective === 'segments'}
+                                        onClick={() => { setPerspective(p => p === 'segments' ? 'ads' : 'segments'); setSelectedKeys(new Set()); }}
+                                        className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${perspective === 'segments' ? 'bg-indigo-600' : 'bg-gray-200'}`}
+                                    >
+                                        <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform ${perspective === 'segments' ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                                    </button>
                                     <span className="text-sm font-medium text-gray-800">Segmentación → Anuncios</span>
                                 </label>
                             </div>
@@ -809,8 +815,9 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                     </div>
                 )}
 
-                {activeTab === 'captation' && dashboardData.captationDaysData && dashboardData.captationDaysData.length > 0 && (
+                {activeTab === 'captation' && (
                     <div className="space-y-6 text-gray-900">
+                        {dashboardData.captationDaysData && dashboardData.captationDaysData.length > 0 ? (
                         <div className="bg-white rounded-lg shadow p-6">
                             <h3 className="text-lg font-semibold mb-2 text-indigo-800">Compras vs Días desde Registro</h3>
                             <p className="text-sm text-gray-700 mb-6">
@@ -874,6 +881,21 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                 );
                             })()}
                         </div>
+                        ) : (
+                        <div className="bg-white rounded-lg shadow p-8 text-center">
+                            <h3 className="text-lg font-semibold mb-2 text-indigo-800">Días desde Registro</h3>
+                            <p className="text-gray-700 mb-4">
+                                No se encontraron datos para mostrar esta vista. Se necesitan columnas de fecha en las tablas:
+                            </p>
+                            <ul className="text-sm text-gray-600 text-left max-w-md mx-auto space-y-1">
+                                <li>• Tabla base: <code className="bg-gray-100 px-1 rounded">FECHA_REGISTRO</code>, <code className="bg-gray-100 px-1 rounded">FECHA</code> o <code className="bg-gray-100 px-1 rounded">FECHA_CAPTACION</code></li>
+                                <li>• Tabla de ventas: <code className="bg-gray-100 px-1 rounded">FECHA</code>, <code className="bg-gray-100 px-1 rounded">FECHA_VENTA</code> o <code className="bg-gray-100 px-1 rounded">created_at</code></li>
+                            </ul>
+                            <p className="text-sm text-gray-500 mt-4">
+                                Esta vista muestra cuántos días pasaron entre el registro del lead y la compra.
+                            </p>
+                        </div>
+                        )}
                     </div>
                 )}
 
