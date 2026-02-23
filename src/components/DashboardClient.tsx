@@ -15,7 +15,7 @@ function formatDateShort(value: string | Date | null | undefined): string {
     if (value == null) return '';
     const d = typeof value === 'string' ? new Date(value) : value;
     if (isNaN(d.getTime())) return String(value);
-    return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+    return new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }).format(d);
 }
 
 function formatCompact(value: number) {
