@@ -110,6 +110,42 @@ async function getPurchasesByDaysSinceRegistration(
     }
 }
 
+async function getSalesByRegistrationDate(
+    baseTable: string,
+    salesTable: string,
+    multiplyRevenue: boolean
+): Promise<{ date: string; leads: number; sales: number; revenue: number }[] | null> {
+    const regDateCandidates = ['FECHA_REGISTRO', 'FECHA', 'FECHA_CAPTACION', 'FECHA_REGISTO', 'fecha_registro', 'created_at'];
+    const regCol = await getDateColumn(baseTable, regDateCandidates);
+    if (!regCol) return null;
+
+    try {
+        const revenueMultiplier = multiplyRevenue ? '* 2' : '';
+        const query = `
+            SELECT
+                DATE(l.\`${regCol}\`) AS fecha_reg,
+                COUNT(DISTINCT l.\`#\`) AS total_leads,
+                COUNT(DISTINCT v.cliente_id) AS total_sales,
+                COALESCE(SUM(CAST(REPLACE(v.monto, ',', '.') AS DECIMAL(10, 2))) ${revenueMultiplier}, 0) AS total_revenue
+            FROM \`${baseTable}\` AS l
+            LEFT JOIN \`${salesTable}\` AS v ON l.\`#\` = v.cliente_id
+            WHERE l.\`${regCol}\` IS NOT NULL
+            GROUP BY DATE(l.\`${regCol}\`)
+            ORDER BY fecha_reg ASC
+        `;
+        const [rows] = await pool.query<any[]>(query);
+        return rows.map((r) => ({
+            date: String(r.fecha_reg || ''),
+            leads: parseInt(r.total_leads, 10) || 0,
+            sales: parseInt(r.total_sales, 10) || 0,
+            revenue: parseFloat(r.total_revenue) || 0
+        }));
+    } catch (error) {
+        console.error('Error getSalesByRegistrationDate:', error);
+        return null;
+    }
+}
+
 async function getCountryColumn(baseTable: string): Promise<string | null> {
     const candidates = ['PAIS', 'COUNTRY', 'PAÍS', 'Pais', 'Country'];
     for (const col of candidates) {
@@ -468,6 +504,7 @@ export async function processDashboardData(formData: FormData) {
         : null;
 
     const captationDaysData = await getPurchasesByDaysSinceRegistration(baseTable, salesTable, multiplyRevenue);
+    const salesByRegistrationDate = await getSalesByRegistrationDate(baseTable, salesTable, multiplyRevenue);
 
     let countryData: { country: string; gasto: number; roas: number; ventas_organicas: number; ventas_trackeadas: number }[] | null = null;
 
@@ -509,6 +546,7 @@ export async function processDashboardData(formData: FormData) {
         },
         qualityData,
         countryData,
-        captationDaysData
+        captationDaysData,
+        salesByRegistrationDate
     };
 }

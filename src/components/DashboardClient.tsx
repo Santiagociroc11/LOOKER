@@ -38,6 +38,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
     const [detailSortBy, setDetailSortBy] = useState('profit');
     const [countrySortBy, setCountrySortBy] = useState<string>('gasto');
     const [countrySortDir, setCountrySortDir] = useState<'asc' | 'desc'>('desc');
+    const [captationView, setCaptationView] = useState<'by_date' | 'by_days'>('by_date');
 
     const searchParams = useSearchParams();
 
@@ -817,7 +818,85 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
 
                 {activeTab === 'captation' && (
                     <div className="space-y-6 text-gray-900">
-                        {dashboardData.captationDaysData && dashboardData.captationDaysData.length > 0 ? (
+                        {(dashboardData.salesByRegistrationDate?.length > 0 || (dashboardData.captationDaysData && dashboardData.captationDaysData.length > 0)) ? (
+                        <>
+                        {(dashboardData.salesByRegistrationDate?.length > 0 && dashboardData.captationDaysData?.length > 0) && (
+                        <div className="flex gap-2 mb-4">
+                            <button
+                                onClick={() => setCaptationView('by_date')}
+                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${captationView === 'by_date' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                            >
+                                Por fecha de registro
+                            </button>
+                            <button
+                                onClick={() => setCaptationView('by_days')}
+                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${captationView === 'by_days' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                            >
+                                Por días hasta compra
+                            </button>
+                        </div>
+                        )}
+
+                        {((captationView === 'by_date' && dashboardData.salesByRegistrationDate?.length > 0) || (dashboardData.salesByRegistrationDate?.length > 0 && !dashboardData.captationDaysData?.length)) && (
+                        <div className="bg-white rounded-lg shadow p-6">
+                            <h3 className="text-lg font-semibold mb-2 text-indigo-800">Ventas por Fecha de Registro</h3>
+                            <p className="text-sm text-gray-700 mb-6">
+                                Cuántas personas se registraron cada día y cuántas de ellas compraron. Útil para ver si los que se registraron en ciertas fechas (ej. antes del evento) compraron más que los que se registraron después.
+                            </p>
+                            <div className="h-[400px] w-full mb-6">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={dashboardData.salesByRegistrationDate.map((r: any) => ({ ...r, label: r.date }))} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                        <XAxis dataKey="label" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={80} />
+                                        <YAxis tick={{ fontSize: 11 }} />
+                                        <Tooltip content={({ active, payload }) => {
+                                            if (!active || !payload?.length) return null;
+                                            const d = payload[0]?.payload;
+                                            const conv = d?.leads > 0 ? ((d?.sales / d?.leads) * 100).toFixed(1) : '0';
+                                            return (
+                                                <div className="bg-white p-3 rounded-lg shadow-lg border border-gray-200 text-sm text-gray-900">
+                                                    <p className="font-semibold mb-2 text-gray-900">{d?.date}</p>
+                                                    <p>Registros: <strong>{d?.leads ?? 0}</strong></p>
+                                                    <p>Compraron: <strong>{d?.sales ?? 0}</strong></p>
+                                                    <p>Conversión: <strong>{conv}%</strong></p>
+                                                    <p>Ingresos: <strong>{formatCurrency(d?.revenue ?? 0)}</strong></p>
+                                                </div>
+                                            );
+                                        }} />
+                                        <Legend />
+                                        <Bar dataKey="leads" name="Registros" fill="#94a3b8" radius={[4, 4, 0, 0]} />
+                                        <Bar dataKey="sales" name="Compraron" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            <th className="px-4 py-3 text-left font-semibold text-gray-800">Fecha de Registro</th>
+                                            <th className="px-4 py-3 text-right font-semibold text-gray-800">Registros</th>
+                                            <th className="px-4 py-3 text-right font-semibold text-gray-800">Compraron</th>
+                                            <th className="px-4 py-3 text-right font-semibold text-gray-800">Conversión</th>
+                                            <th className="px-4 py-3 text-right font-semibold text-gray-800">Ingresos</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-200">
+                                        {dashboardData.salesByRegistrationDate.map((row: any) => (
+                                            <tr key={row.date} className="hover:bg-gray-50">
+                                                <td className="px-4 py-3 font-medium text-gray-900">{row.date}</td>
+                                                <td className="px-4 py-3 text-right text-gray-700">{row.leads}</td>
+                                                <td className="px-4 py-3 text-right font-semibold text-indigo-600">{row.sales}</td>
+                                                <td className="px-4 py-3 text-right">{row.leads > 0 ? ((row.sales / row.leads) * 100).toFixed(1) : 0}%</td>
+                                                <td className="px-4 py-3 text-right text-green-600">{formatCurrency(row.revenue)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        )}
+
+                        {((captationView === 'by_days' && dashboardData.captationDaysData?.length > 0) || (dashboardData.captationDaysData?.length > 0 && !dashboardData.salesByRegistrationDate?.length)) && (
                         <div className="bg-white rounded-lg shadow p-6">
                             <h3 className="text-lg font-semibold mb-2 text-indigo-800">Compras vs Días desde Registro</h3>
                             <p className="text-sm text-gray-700 mb-6">
@@ -881,18 +960,20 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                 );
                             })()}
                         </div>
+                        )}
+                        </>
                         ) : (
                         <div className="bg-white rounded-lg shadow p-8 text-center">
                             <h3 className="text-lg font-semibold mb-2 text-indigo-800">Días desde Registro</h3>
                             <p className="text-gray-700 mb-4">
-                                No se encontraron datos para mostrar esta vista. Se necesitan columnas de fecha en las tablas:
+                                No se encontraron datos. Se necesita al menos la columna de fecha de registro en la tabla base:
                             </p>
                             <ul className="text-sm text-gray-600 text-left max-w-md mx-auto space-y-1">
                                 <li>• Tabla base: <code className="bg-gray-100 px-1 rounded">FECHA_REGISTRO</code>, <code className="bg-gray-100 px-1 rounded">FECHA</code> o <code className="bg-gray-100 px-1 rounded">FECHA_CAPTACION</code></li>
-                                <li>• Tabla de ventas: <code className="bg-gray-100 px-1 rounded">FECHA</code>, <code className="bg-gray-100 px-1 rounded">FECHA_VENTA</code> o <code className="bg-gray-100 px-1 rounded">created_at</code></li>
+                                <li>• Para &quot;días hasta compra&quot; también: tabla de ventas con <code className="bg-gray-100 px-1 rounded">FECHA</code>, <code className="bg-gray-100 px-1 rounded">FECHA_VENTA</code> o <code className="bg-gray-100 px-1 rounded">created_at</code></li>
                             </ul>
                             <p className="text-sm text-gray-500 mt-4">
-                                Esta vista muestra cuántos días pasaron entre el registro del lead y la compra.
+                                <strong>Por fecha de registro:</strong> cuántos se registraron cada día y cuántos compraron. <strong>Por días hasta compra:</strong> cuántos días pasaron entre registro y compra.
                             </p>
                         </div>
                         )}
