@@ -911,7 +911,23 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                             label={{ value: 'Conv. %', angle: 90, position: 'insideRight', offset: 0 }}
                                         />
                                         <YAxis yAxisId="ingresos" orientation="right" tick={{ fontSize: 10 }} tickFormatter={(v) => formatCompact(v)} width={50} />
-                                        <YAxis yAxisId="cpl" orientation="right" tick={{ fontSize: 10 }} tickFormatter={(v) => formatCompact(v)} width={45} />
+                                        <YAxis
+                                            yAxisId="cpl"
+                                            orientation="right"
+                                            domain={[0, (() => {
+                                                const cpls = dashboardData.salesByRegistrationDate
+                                                    .map((r: any) => r.leads > 0 ? (r.gasto ?? 0) / r.leads : 0)
+                                                    .filter((v: number) => v > 0)
+                                                    .sort((a: number, b: number) => a - b);
+                                                const med = cpls.length > 0 ? cpls[Math.floor(cpls.length / 2)] : 0;
+                                                const scaleMax = Math.ceil(Math.max(1, med * 2.5));
+                                                return Math.min(100000, scaleMax);
+                                            })()]}
+                                            allowDataOverflow
+                                            tick={{ fontSize: 10 }}
+                                            tickFormatter={(v) => formatCompact(v)}
+                                            width={45}
+                                        />
                                         <Tooltip content={({ active, payload }) => {
                                             if (!active || !payload?.length) return null;
                                             const d = payload[0]?.payload;
