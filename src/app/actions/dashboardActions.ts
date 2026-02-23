@@ -114,7 +114,8 @@ async function getSalesByRegistrationDate(
     baseTable: string,
     salesTable: string,
     multiplyRevenue: boolean,
-    segmentationsData?: Record<string, { spend: number }>
+    segmentationsData?: Record<string, { spend: number }>,
+    spendByDate?: Record<string, number>
 ): Promise<{ date: string; leads: number; sales: number; revenue: number; ads?: { anuncio: string; segmentacion: string; leads: number; sales: number; revenue: number; gasto: number; roas: number }[] }[] | null> {
     const regDateCandidates = ['FECHA_REGISTRO', 'FECHA', 'FECHA_CAPTACION', 'FECHA_REGISTO', 'fecha_registro', 'created_at'];
     const regCol = await getDateColumn(baseTable, regDateCandidates);
@@ -172,7 +173,7 @@ async function getSalesByRegistrationDate(
             const dateStr = raw instanceof Date ? raw.toISOString().slice(0, 10) : raw ? String(raw).slice(0, 10) : '';
             if (!adsByDate[dateStr]) adsByDate[dateStr] = [];
             const spendKey = `${normalizeAdName(r.anuncio)}|${normalizeAdName(r.segmentacion)}`;
-            const gasto = segmentationsData?.[spendKey]?.spend ?? 0;
+            const gasto = spendByDate?.[`${dateStr}|${spendKey}`] ?? segmentationsData?.[spendKey]?.spend ?? 0;
             const revenue = parseFloat(r.revenue) || 0;
             const roas = gasto > 0 ? revenue / gasto : 0;
             adsByDate[dateStr].push({
@@ -343,6 +344,7 @@ export async function processDashboardData(formData: FormData) {
 
     const segmentationsData = spendResult.segmentations;
     const spendMapping = spendResult.mapping;
+    const spendByDate = spendResult.spendByDate;
 
     if (Object.keys(segmentationsData).length === 0) {
         throw new Error('No se pudieron procesar los datos de gastos del archivo CSV.');
@@ -553,7 +555,7 @@ export async function processDashboardData(formData: FormData) {
         : null;
 
     const captationDaysData = await getPurchasesByDaysSinceRegistration(baseTable, salesTable, multiplyRevenue);
-    const salesByRegistrationDate = await getSalesByRegistrationDate(baseTable, salesTable, multiplyRevenue, segmentationsData);
+    const salesByRegistrationDate = await getSalesByRegistrationDate(baseTable, salesTable, multiplyRevenue, segmentationsData, spendByDate);
 
     let countryData: { country: string; gasto: number; roas: number; ventas_organicas: number; ventas_trackeadas: number }[] | null = null;
 

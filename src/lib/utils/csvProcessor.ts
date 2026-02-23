@@ -45,6 +45,16 @@ export interface CSVDataRow {
     'placement'?: string;
     'platform'?: string;
     'ad id'?: string;
+    'day'?: string;
+    'date'?: string;
+    'reporting date'?: string;
+}
+
+function parseDateToYMD(val: string | undefined): string | null {
+    if (!val?.trim()) return null;
+    const d = new Date(val.trim());
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString().slice(0, 10);
 }
 
 export interface SpendSegmentation {
@@ -58,7 +68,7 @@ export interface SpendSegmentation {
 }
 
 export async function processSpendCSV(csvContent: string, exchangeRate: number = 0) {
-    return new Promise<{ segmentations: Record<string, SpendSegmentation>, mapping: Record<string, string> }>((resolve, reject) => {
+    return new Promise<{ segmentations: Record<string, SpendSegmentation>, mapping: Record<string, string>, spendByDate?: Record<string, number> }>((resolve, reject) => {
         Papa.parse<CSVDataRow>(csvContent, {
             header: true,
             skipEmptyLines: true,
@@ -66,12 +76,14 @@ export async function processSpendCSV(csvContent: string, exchangeRate: number =
             complete: (results) => {
                 const segmentations: Record<string, SpendSegmentation> = {};
                 const spend_mapping: Record<string, string> = {};
+                const spendByDate: Record<string, number> = {};
 
                 for (const data of results.data) {
                     const campaign_name = data['campaign name']?.trim() || '';
                     const ad_set_name = data['ad set name']?.trim() || '';
                     const ad_name_original = data['ad name']?.trim() || '';
                     const ad_id = data['ad id']?.trim() || '';
+                    const dayStr = parseDateToYMD(data['day'] || data['date'] || data['reporting date'] || '');
 
                     let amountStr = data['amount spent'] || '0';
                     amountStr = amountStr.replace(',', '.');
@@ -103,10 +115,19 @@ export async function processSpendCSV(csvContent: string, exchangeRate: number =
                         }
 
                         segmentations[unique_key].spend += amount;
+
+                        if (dayStr) {
+                            const dateKey = `${dayStr}|${unique_key}`;
+                            spendByDate[dateKey] = (spendByDate[dateKey] || 0) + amount;
+                        }
                     }
                 }
 
-                resolve({ segmentations, mapping: spend_mapping });
+                resolve({
+                    segmentations,
+                    mapping: spend_mapping,
+                    spendByDate: Object.keys(spendByDate).length > 0 ? spendByDate : undefined
+                });
             },
             error: (error: Error) => {
                 reject(error);
