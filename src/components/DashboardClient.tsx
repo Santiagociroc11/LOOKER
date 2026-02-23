@@ -898,7 +898,8 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                                     .map((r: any) => r.leads > 0 ? (r.sales / r.leads) * 100 : 0)
                                                     .sort((a: number, b: number) => a - b);
                                                 const p90 = convs.length > 0 ? convs[Math.min(Math.floor(convs.length * 0.9), convs.length - 1)] : 0;
-                                                return Math.min(100, Math.max(10, Math.ceil((p90 || 0) * 1.2)));
+                                                const scaleMax = Math.ceil((p90 || 0) * 1.5);
+                                                return Math.min(100, Math.max(3, scaleMax));
                                             })()]}
                                             tick={{ fontSize: 10 }}
                                             tickFormatter={(v) => `${v}%`}
