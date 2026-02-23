@@ -876,18 +876,31 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                             <div className="h-[400px] w-full mb-6">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <ComposedChart
-                                        data={dashboardData.salesByRegistrationDate.map((r: any) => ({
-                                            ...r,
-                                            label: formatDateShort(r.date),
-                                            conversion: r.leads > 0 ? Math.round((r.sales / r.leads) * 1000) / 10 : 0
-                                        }))}
+                                        data={(() => {
+                                            const mapped = dashboardData.salesByRegistrationDate.map((r: any) => ({
+                                                ...r,
+                                                label: formatDateShort(r.date),
+                                                conversion: r.leads > 0 ? Math.round((r.sales / r.leads) * 1000) / 10 : 0
+                                            }));
+                                            return mapped;
+                                        })()}
                                         margin={{ top: 20, right: 120, left: 20, bottom: 60 }}
                                     >
                                         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                                         <XAxis dataKey="label" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={80} />
                                         <YAxis yAxisId="left" tick={{ fontSize: 11 }} label={{ value: 'Registros', angle: -90, position: 'insideLeft' }} />
                                         <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} label={{ value: 'Compraron', angle: 90, position: 'insideRight' }} />
-                                        <YAxis yAxisId="right2" orientation="right" domain={[0, 100]} tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}%`} width={45} label={{ value: 'Conv. %', angle: 90, position: 'insideRight', offset: 0 }} />
+                                        <YAxis
+                                            yAxisId="right2"
+                                            orientation="right"
+                                            domain={[0, Math.min(100, Math.max(10, Math.ceil(
+                                                Math.max(...dashboardData.salesByRegistrationDate.map((r: any) => r.leads > 0 ? (r.sales / r.leads) * 100 : 0), 0
+                                            ) * 1.15)))]}
+                                            tick={{ fontSize: 10 }}
+                                            tickFormatter={(v) => `${v}%`}
+                                            width={45}
+                                            label={{ value: 'Conv. %', angle: 90, position: 'insideRight', offset: 0 }}
+                                        />
                                         <YAxis yAxisId="ingresos" orientation="right" tick={{ fontSize: 10 }} tickFormatter={(v) => formatCompact(v)} width={50} />
                                         <Tooltip content={({ active, payload }) => {
                                             if (!active || !payload?.length) return null;
