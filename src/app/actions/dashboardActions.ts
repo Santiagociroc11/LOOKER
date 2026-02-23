@@ -244,6 +244,53 @@ async function getSalesByCountry(
     }
 }
 
+async function getSalesByRegistrationDateByCountry(
+    baseTable: string,
+    salesTable: string,
+    multiplyRevenue: boolean
+): Promise<Record<string, { country: string; leads: number; sales: number; revenue: number; gasto: number }[]> | null> {
+    const regDateCandidates = ['FECHA_REGISTRO', 'FECHA', 'FECHA_CAPTACION', 'FECHA_REGISTO', 'fecha_registro', 'created_at'];
+    const regCol = await getDateColumn(baseTable, regDateCandidates);
+    const countryCol = await getCountryColumn(baseTable);
+    if (!regCol || !countryCol) return null;
+
+    try {
+        const revenueMultiplier = multiplyRevenue ? '* 2' : '';
+        const query = `
+            SELECT
+                DATE(l.\`${regCol}\`) AS fecha_reg,
+                COALESCE(l.\`${countryCol}\`, 'Sin país') AS country,
+                COUNT(DISTINCT l.\`#\`) AS leads,
+                COUNT(DISTINCT v.cliente_id) AS sales,
+                COALESCE(SUM(CAST(REPLACE(v.monto, ',', '.') AS DECIMAL(10, 2))) ${revenueMultiplier}, 0) AS revenue
+            FROM \`${baseTable}\` AS l
+            LEFT JOIN \`${salesTable}\` AS v ON l.\`#\` = v.cliente_id
+            WHERE l.\`${regCol}\` IS NOT NULL
+            GROUP BY DATE(l.\`${regCol}\`), l.\`${countryCol}\`
+            ORDER BY fecha_reg ASC, revenue DESC
+        `;
+        const [rows] = await pool.query<any[]>(query);
+        const byDate: Record<string, { country: string; leads: number; sales: number; revenue: number; gasto: number }[]> = {};
+        for (const r of rows) {
+            const raw = r.fecha_reg;
+            const dateStr = raw instanceof Date ? raw.toISOString().slice(0, 10) : raw ? String(raw).slice(0, 10) : '';
+            const country = String(r.country || 'Sin país').trim();
+            if (!byDate[dateStr]) byDate[dateStr] = [];
+            byDate[dateStr].push({
+                country,
+                leads: parseInt(r.leads, 10) || 0,
+                sales: parseInt(r.sales, 10) || 0,
+                revenue: parseFloat(r.revenue) || 0,
+                gasto: 0
+            });
+        }
+        return byDate;
+    } catch (error) {
+        console.error('Error getSalesByRegistrationDateByCountry:', error);
+        return null;
+    }
+}
+
 async function getOrganicSales(salesTable: string, multiplyRevenue = false) {
     try {
         const revenueMultiplier = multiplyRevenue ? '* 2' : '';
@@ -568,9 +615,11 @@ export async function processDashboardData(formData: FormData) {
 
     let countryData: { country: string; gasto: number; roas: number; ventas_organicas: number; ventas_trackeadas: number }[] | null = null;
 
+    let salesByRegistrationDateByCountry: Record<string, { country: string; leads: number; sales: number; revenue: number; gasto: number }[]> | null = null;
+
     if (countryCsvFile && countryCsvFile.size > 0) {
         const countryCsvContent = await countryCsvFile.text();
-        const spendByCountry = await processCountryCSV(countryCsvContent, exchangeRate);
+        const { byCountry: spendByCountry, spendByDateAndCountry } = await processCountryCSV(countryCsvContent, exchangeRate);
         const salesByCountry = await getSalesByCountry(baseTable, salesTable, multiplyRevenue);
 
         const allCountries = new Set<string>([
@@ -594,6 +643,19 @@ export async function processDashboardData(formData: FormData) {
         });
 
         countryData.sort((a, b) => b.gasto - a.gasto);
+
+        const byCountryRaw = await getSalesByRegistrationDateByCountry(baseTable, salesTable, multiplyRevenue);
+        if (byCountryRaw && spendByDateAndCountry) {
+            salesByRegistrationDateByCountry = {};
+            for (const [dateStr, countries] of Object.entries(byCountryRaw)) {
+                salesByRegistrationDateByCountry[dateStr] = countries.map((c) => {
+                    const gasto = spendByDateAndCountry[dateStr]?.[c.country] ?? 0;
+                    return { ...c, gasto };
+                });
+            }
+        } else if (byCountryRaw) {
+            salesByRegistrationDateByCountry = byCountryRaw;
+        }
     }
 
     return {
@@ -607,6 +669,7 @@ export async function processDashboardData(formData: FormData) {
         qualityData,
         countryData,
         captationDaysData,
-        salesByRegistrationDate
+        salesByRegistrationDate,
+        salesByRegistrationDateByCountry
     };
 }

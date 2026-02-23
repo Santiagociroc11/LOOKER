@@ -51,6 +51,8 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
     const [modalSortBy, setModalSortBy] = useState<string>('revenue');
     const [modalSortDir, setModalSortDir] = useState<'asc' | 'desc'>('desc');
     const [chartMetrics, setChartMetrics] = useState({ leads: true, sales: true, conversion: true, revenue: true, cpl: false });
+    const [captationFilterBy, setCaptationFilterBy] = useState<'todos' | 'anuncio' | 'segmentacion' | 'pais'>('todos');
+    const [captationFilterValue, setCaptationFilterValue] = useState<string>('');
 
     const searchParams = useSearchParams();
 
@@ -278,6 +280,100 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
             total_roas: selectedDetails.totalSpend > 0 ? selectedDetails.totalRevenue / selectedDetails.totalSpend : 0
         };
     }, [selectedKeys, selectedDetails, dashboardData]);
+
+    const captationFilterOptions = useMemo(() => {
+        const sbr = dashboardData?.salesByRegistrationDate as { date: string; ads?: { anuncio: string; segmentacion: string }[] }[] | undefined;
+        const byCountry = dashboardData?.salesByRegistrationDateByCountry as Record<string, { country: string }[]> | undefined;
+        const anuncios = new Set<string>();
+        const segmentaciones = new Set<string>();
+        const paises = new Set<string>();
+        if (sbr) {
+            for (const row of sbr) {
+                for (const ad of row.ads || []) {
+                    if (ad.anuncio) anuncios.add(ad.anuncio);
+                    if (ad.segmentacion) segmentaciones.add(ad.segmentacion);
+                }
+            }
+        }
+        if (byCountry) {
+            for (const countries of Object.values(byCountry)) {
+                for (const c of countries) if (c.country) paises.add(c.country);
+            }
+        }
+        return {
+            anuncios: Array.from(anuncios).sort(),
+            segmentaciones: Array.from(segmentaciones).sort(),
+            paises: Array.from(paises).sort()
+        };
+    }, [dashboardData]);
+
+    const captationChartData = useMemo(() => {
+        const sbr = dashboardData?.salesByRegistrationDate as { date: string; leads: number; sales: number; revenue: number; gasto?: number; ads?: { anuncio: string; segmentacion: string; leads: number; sales: number; revenue: number; gasto: number }[] }[] | undefined;
+        const byCountry = dashboardData?.salesByRegistrationDateByCountry as Record<string, { country: string; leads: number; sales: number; revenue: number; gasto: number }[]> | undefined;
+        if (!sbr) return [];
+
+        if (captationFilterBy === 'todos' || !captationFilterValue) {
+            return sbr.map((r) => ({
+                ...r,
+                gasto: r.gasto ?? 0
+            }));
+        }
+
+        if (captationFilterBy === 'anuncio' || captationFilterBy === 'segmentacion') {
+            return sbr.map((row) => {
+                const filtered = (row.ads || []).filter((ad) =>
+                    captationFilterBy === 'anuncio' ? ad.anuncio === captationFilterValue : ad.segmentacion === captationFilterValue
+                );
+                const leads = filtered.reduce((s, a) => s + a.leads, 0);
+                const sales = filtered.reduce((s, a) => s + a.sales, 0);
+                const revenue = filtered.reduce((s, a) => s + a.revenue, 0);
+                const gasto = filtered.reduce((s, a) => s + (a.gasto || 0), 0);
+                return {
+                    date: row.date,
+                    leads,
+                    sales,
+                    revenue,
+                    gasto,
+                    cpl: leads > 0 ? gasto / leads : 0,
+                    ads: filtered.length > 0 ? filtered : undefined
+                };
+            });
+        }
+
+        if (captationFilterBy === 'pais' && byCountry) {
+            const allDates = new Set<string>([
+                ...(sbr?.map((r) => r.date) || []),
+                ...Object.keys(byCountry)
+            ]);
+            return Array.from(allDates)
+                .sort()
+                .map((dateStr) => {
+                    const countries = byCountry[dateStr] || [];
+                    const match = countries.find((c) => c.country === captationFilterValue);
+                    if (!match) {
+                        return {
+                            date: dateStr,
+                            leads: 0,
+                            sales: 0,
+                            revenue: 0,
+                            gasto: 0,
+                            cpl: 0
+                        };
+                    }
+                    const gasto = match.gasto ?? 0;
+                    return {
+                        date: dateStr,
+                        leads: match.leads,
+                        sales: match.sales,
+                        revenue: match.revenue,
+                        gasto,
+                        cpl: match.leads > 0 ? gasto / match.leads : 0
+                    };
+                });
+        }
+
+        return sbr.map((r) => ({ ...r, gasto: r.gasto ?? 0 }));
+    }, [dashboardData, captationFilterBy, captationFilterValue]);
 
     const handleMainRowClick = (key: string, e: React.MouseEvent) => {
         const currentArray = sortedMainList;
@@ -855,6 +951,31 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                             <p className="text-sm text-gray-700 mb-4">
                                 Cuántas personas se registraron cada día y cuántas de ellas compraron. Útil para ver si los que se registraron en ciertas fechas (ej. antes del evento) compraron más que los que se registraron después.
                             </p>
+                            <div className="flex flex-wrap items-center gap-4 mb-4">
+                                <span className="text-sm font-medium text-gray-700">Ver captación por:</span>
+                                <select
+                                    value={captationFilterBy}
+                                    onChange={(e) => { setCaptationFilterBy(e.target.value as any); setCaptationFilterValue(''); }}
+                                    className="text-sm border border-gray-300 rounded px-3 py-1.5 text-gray-900 bg-white"
+                                >
+                                    <option value="todos">Todos</option>
+                                    <option value="anuncio">Anuncio</option>
+                                    <option value="segmentacion">Segmentación</option>
+                                    {captationFilterOptions.paises.length > 0 && <option value="pais">País</option>}
+                                </select>
+                                {captationFilterBy !== 'todos' && (
+                                    <select
+                                        value={captationFilterValue}
+                                        onChange={(e) => setCaptationFilterValue(e.target.value)}
+                                        className="text-sm border border-gray-300 rounded px-3 py-1.5 text-gray-900 bg-white min-w-[180px]"
+                                    >
+                                        <option value="">-- Selecciona {captationFilterBy === 'anuncio' ? 'anuncio' : captationFilterBy === 'segmentacion' ? 'segmentación' : 'país'} --</option>
+                                        {captationFilterBy === 'anuncio' && captationFilterOptions.anuncios.map((a) => <option key={a} value={a}>{a}</option>)}
+                                        {captationFilterBy === 'segmentacion' && captationFilterOptions.segmentaciones.map((s) => <option key={s} value={s}>{s}</option>)}
+                                        {captationFilterBy === 'pais' && captationFilterOptions.paises.map((p) => <option key={p} value={p}>{p}</option>)}
+                                    </select>
+                                )}
+                            </div>
                             <div className="flex flex-wrap gap-4 mb-4">
                                 <label className="flex items-center gap-2 cursor-pointer">
                                     <input type="checkbox" checked={chartMetrics.leads} onChange={(e) => setChartMetrics(m => ({ ...m, leads: e.target.checked }))} className="rounded" />
@@ -880,7 +1001,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                             <div className="h-[400px] w-full mb-6">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <ComposedChart
-                                        data={dashboardData.salesByRegistrationDate.map((r: any) => ({
+                                        data={captationChartData.map((r: any) => ({
                                             ...r,
                                             label: formatDateShort(r.date),
                                             conversion: r.leads > 0 ? Math.round((r.sales / r.leads) * 1000) / 10 : 0,
@@ -896,7 +1017,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                             yAxisId="right2"
                                             orientation="right"
                                             domain={[0, (() => {
-                                                const convs = dashboardData.salesByRegistrationDate
+                                                const convs = captationChartData
                                                     .map((r: any) => r.leads > 0 ? (r.sales / r.leads) * 100 : 0)
                                                     .filter((v: number) => v > 0)
                                                     .sort((a: number, b: number) => a - b);
@@ -915,7 +1036,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                             yAxisId="cpl"
                                             orientation="right"
                                             domain={[0, (() => {
-                                                const cpls = dashboardData.salesByRegistrationDate
+                                                const cpls = captationChartData
                                                     .map((r: any) => r.leads > 0 ? (r.gasto ?? 0) / r.leads : 0)
                                                     .filter((v: number) => v > 0)
                                                     .sort((a: number, b: number) => a - b);
@@ -968,14 +1089,14 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-200">
-                                        {dashboardData.salesByRegistrationDate.map((row: any) => (
+                                        {captationChartData.map((row: any) => (
                                             <tr key={row.date} className="hover:bg-gray-50">
                                                 <td className="px-4 py-3 font-medium text-gray-900">{formatDateShort(row.date)}</td>
                                                 <td className="px-4 py-3 text-right text-gray-700">{row.leads}</td>
                                                 <td className="px-4 py-3 text-right font-semibold text-indigo-600">{row.sales}</td>
                                                 <td className="px-4 py-3 text-right">{row.leads > 0 ? ((row.sales / row.leads) * 100).toFixed(1) : 0}%</td>
                                                 <td className="px-4 py-3 text-right text-red-600">{formatCurrency(row.gasto ?? 0)}</td>
-                                                <td className="px-4 py-3 text-right text-orange-600">{formatCurrency(row.cpl ?? 0)}</td>
+                                                <td className="px-4 py-3 text-right text-orange-600">{formatCurrency(row.leads > 0 ? (row.gasto ?? 0) / row.leads : 0)}</td>
                                                 <td className="px-4 py-3 text-right text-green-600">{formatCurrency(row.revenue)}</td>
                                                 <td className="px-4 py-3 text-center">
                                                     {row.ads && row.ads.length > 0 ? (

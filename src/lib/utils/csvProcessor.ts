@@ -136,8 +136,18 @@ export async function processSpendCSV(csvContent: string, exchangeRate: number =
     });
 }
 
+function parseDateToYMDCountry(val: string | undefined): string | null {
+    if (!val?.trim()) return null;
+    const d = new Date(val.trim());
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString().slice(0, 10);
+}
+
 /** CSV formato: Day,Amount Spent,Campaign Name,Leads,...,Country */
-export async function processCountryCSV(csvContent: string, exchangeRate: number = 0): Promise<Record<string, number>> {
+export async function processCountryCSV(csvContent: string, exchangeRate: number = 0): Promise<{
+    byCountry: Record<string, number>;
+    spendByDateAndCountry?: Record<string, Record<string, number>>;
+}> {
     return new Promise((resolve, reject) => {
         Papa.parse<Record<string, string>>(csvContent, {
             header: true,
@@ -145,6 +155,7 @@ export async function processCountryCSV(csvContent: string, exchangeRate: number
             transformHeader: (h) => h.trim().toLowerCase(),
             complete: (results) => {
                 const byCountry: Record<string, number> = {};
+                const spendByDateAndCountry: Record<string, Record<string, number>> = {};
                 for (const row of results.data) {
                     const country = (row['country'] || row['país'] || '').trim();
                     if (!country) continue;
@@ -158,8 +169,17 @@ export async function processCountryCSV(csvContent: string, exchangeRate: number
                     }
 
                     byCountry[country] = (byCountry[country] || 0) + amount;
+
+                    const dayStr = parseDateToYMDCountry(row['day'] || row['date'] || row['reporting date'] || '');
+                    if (dayStr) {
+                        if (!spendByDateAndCountry[dayStr]) spendByDateAndCountry[dayStr] = {};
+                        spendByDateAndCountry[dayStr][country] = (spendByDateAndCountry[dayStr][country] || 0) + amount;
+                    }
                 }
-                resolve(byCountry);
+                resolve({
+                    byCountry,
+                    spendByDateAndCountry: Object.keys(spendByDateAndCountry).length > 0 ? spendByDateAndCountry : undefined
+                });
             },
             error: (e: Error) => reject(e)
         });
