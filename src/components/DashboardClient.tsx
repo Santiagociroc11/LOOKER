@@ -50,6 +50,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
     const [modalViewBy, setModalViewBy] = useState<'anuncio' | 'segmentacion'>('anuncio');
     const [modalSortBy, setModalSortBy] = useState<string>('revenue');
     const [modalSortDir, setModalSortDir] = useState<'asc' | 'desc'>('desc');
+    const [chartMetrics, setChartMetrics] = useState({ leads: true, sales: true, conversion: true, revenue: true });
 
     const searchParams = useSearchParams();
 
@@ -851,9 +852,27 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                         {((captationView === 'by_date' && dashboardData.salesByRegistrationDate?.length > 0) || (dashboardData.salesByRegistrationDate?.length > 0 && !dashboardData.captationDaysData?.length)) && (
                         <div className="bg-white rounded-lg shadow p-6">
                             <h3 className="text-lg font-semibold mb-2 text-indigo-800">Ventas por Fecha de Registro</h3>
-                            <p className="text-sm text-gray-700 mb-6">
+                            <p className="text-sm text-gray-700 mb-4">
                                 Cuántas personas se registraron cada día y cuántas de ellas compraron. Útil para ver si los que se registraron en ciertas fechas (ej. antes del evento) compraron más que los que se registraron después.
                             </p>
+                            <div className="flex flex-wrap gap-4 mb-4">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" checked={chartMetrics.leads} onChange={(e) => setChartMetrics(m => ({ ...m, leads: e.target.checked }))} className="rounded" />
+                                    <span className="text-sm font-medium text-gray-700">Registros</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" checked={chartMetrics.sales} onChange={(e) => setChartMetrics(m => ({ ...m, sales: e.target.checked }))} className="rounded" />
+                                    <span className="text-sm font-medium text-gray-700">Compraron</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" checked={chartMetrics.conversion} onChange={(e) => setChartMetrics(m => ({ ...m, conversion: e.target.checked }))} className="rounded" />
+                                    <span className="text-sm font-medium text-gray-700">Conversión %</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" checked={chartMetrics.revenue} onChange={(e) => setChartMetrics(m => ({ ...m, revenue: e.target.checked }))} className="rounded" />
+                                    <span className="text-sm font-medium text-gray-700">Ingresos</span>
+                                </label>
+                            </div>
                             <div className="h-[400px] w-full mb-6">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <ComposedChart
@@ -885,10 +904,10 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                             );
                                         }} />
                                         <Legend />
-                                        <Bar yAxisId="left" dataKey="leads" name="Registros" fill="#94a3b8" radius={[4, 4, 0, 0]} />
-                                        <Bar yAxisId="right" dataKey="sales" name="Compraron" fill="#6366f1" radius={[4, 4, 0, 0]} />
-                                        <Line yAxisId="right2" type="monotone" dataKey="conversion" name="Conversión %" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />
-                                        <Line yAxisId="ingresos" type="monotone" dataKey="revenue" name="Ingresos" stroke="#eab308" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="5 5" />
+                                        {chartMetrics.leads && <Bar yAxisId="left" dataKey="leads" name="Registros" fill="#94a3b8" radius={[4, 4, 0, 0]} />}
+                                        {chartMetrics.sales && <Bar yAxisId="right" dataKey="sales" name="Compraron" fill="#6366f1" radius={[4, 4, 0, 0]} />}
+                                        {chartMetrics.conversion && <Line yAxisId="right2" type="monotone" dataKey="conversion" name="Conversión %" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />}
+                                        {chartMetrics.revenue && <Line yAxisId="ingresos" type="monotone" dataKey="revenue" name="Ingresos" stroke="#eab308" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="5 5" />}
                                     </ComposedChart>
                                 </ResponsiveContainer>
                             </div>
