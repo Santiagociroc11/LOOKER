@@ -658,6 +658,80 @@ export async function processDashboardData(formData: FormData) {
         }
     }
 
+    const captationByAnuncio: Record<string, { date: string; leads: number; sales: number; revenue: number; gasto: number; cpl: number; ads?: { anuncio: string; segmentacion: string; leads: number; sales: number; revenue: number; gasto: number }[] }[]> = {};
+    const captationBySegmentacion: Record<string, { date: string; leads: number; sales: number; revenue: number; gasto: number; cpl: number; ads?: { anuncio: string; segmentacion: string; leads: number; sales: number; revenue: number; gasto: number }[] }[]> = {};
+    const captationByPais: Record<string, { date: string; leads: number; sales: number; revenue: number; gasto: number; cpl: number }[]> = {};
+
+    if (salesByRegistrationDate && Array.isArray(salesByRegistrationDate)) {
+        for (const row of salesByRegistrationDate) {
+            const dateStr = row.date;
+            for (const ad of row.ads || []) {
+                const anuncio = ad.anuncio || 'Sin anuncio';
+                const segmentacion = ad.segmentacion || 'Sin segmentación';
+                const leads = ad.leads || 0;
+                const sales = ad.sales || 0;
+                const revenue = ad.revenue || 0;
+                const gasto = ad.gasto || 0;
+                if (!captationByAnuncio[anuncio]) captationByAnuncio[anuncio] = [];
+                if (!captationBySegmentacion[segmentacion]) captationBySegmentacion[segmentacion] = [];
+                const aggAnuncio = captationByAnuncio[anuncio];
+                const aggSeg = captationBySegmentacion[segmentacion];
+                let foundAn = aggAnuncio.find((x) => x.date === dateStr);
+                let foundSeg = aggSeg.find((x) => x.date === dateStr);
+                const adEntry = { anuncio: ad.anuncio || 'Sin anuncio', segmentacion: ad.segmentacion || 'Sin segmentación', leads: ad.leads || 0, sales: ad.sales || 0, revenue: ad.revenue || 0, gasto: ad.gasto || 0 };
+                if (!foundAn) {
+                    foundAn = { date: dateStr, leads: 0, sales: 0, revenue: 0, gasto: 0, cpl: 0, ads: [] };
+                    aggAnuncio.push(foundAn);
+                }
+                if (!foundSeg) {
+                    foundSeg = { date: dateStr, leads: 0, sales: 0, revenue: 0, gasto: 0, cpl: 0, ads: [] };
+                    aggSeg.push(foundSeg);
+                }
+                foundAn.leads += leads;
+                foundAn.sales += sales;
+                foundAn.revenue += revenue;
+                foundAn.gasto += gasto;
+                (foundAn.ads as any[]).push(adEntry);
+                foundSeg.leads += leads;
+                foundSeg.sales += sales;
+                foundSeg.revenue += revenue;
+                foundSeg.gasto += gasto;
+                (foundSeg.ads as any[]).push(adEntry);
+            }
+        }
+        for (const arr of Object.values(captationByAnuncio)) {
+            arr.sort((a, b) => a.date.localeCompare(b.date));
+            for (const r of arr) r.cpl = r.leads > 0 ? r.gasto / r.leads : 0;
+        }
+        for (const arr of Object.values(captationBySegmentacion)) {
+            arr.sort((a, b) => a.date.localeCompare(b.date));
+            for (const r of arr) r.cpl = r.leads > 0 ? r.gasto / r.leads : 0;
+        }
+    }
+
+    if (salesByRegistrationDateByCountry) {
+        const allDates = new Set<string>(Object.keys(salesByRegistrationDateByCountry));
+        if (salesByRegistrationDate) for (const r of salesByRegistrationDate) allDates.add(r.date);
+        for (const dateStr of Array.from(allDates).sort()) {
+            const countries = salesByRegistrationDateByCountry[dateStr] || [];
+            for (const c of countries) {
+                const country = c.country || 'Sin país';
+                const gasto = c.gasto ?? 0;
+                const cpl = c.leads > 0 ? gasto / c.leads : 0;
+                if (!captationByPais[country]) captationByPais[country] = [];
+                captationByPais[country].push({
+                    date: dateStr,
+                    leads: c.leads,
+                    sales: c.sales,
+                    revenue: c.revenue,
+                    gasto,
+                    cpl
+                });
+            }
+        }
+        for (const arr of Object.values(captationByPais)) arr.sort((a, b) => a.date.localeCompare(b.date));
+    }
+
     return {
         ads: Object.fromEntries(sortedAds),
         summary: {
@@ -670,6 +744,9 @@ export async function processDashboardData(formData: FormData) {
         countryData,
         captationDaysData,
         salesByRegistrationDate,
-        salesByRegistrationDateByCountry
+        salesByRegistrationDateByCountry,
+        captationByAnuncio,
+        captationBySegmentacion,
+        captationByPais
     };
 }
