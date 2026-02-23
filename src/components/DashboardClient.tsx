@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { getAvailableTables, processDashboardData } from '@/app/actions/dashboardActions';
+import { saveReport, getReportById } from '@/lib/localStorage';
 import { RefreshCw } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
@@ -34,6 +36,24 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
     const [lastSelectedKey, setLastSelectedKey] = useState<string | null>(null);
     const [sortBy, setSortBy] = useState('profit');
     const [detailSortBy, setDetailSortBy] = useState('profit');
+    const [countrySortBy, setCountrySortBy] = useState<string>('gasto');
+    const [countrySortDir, setCountrySortDir] = useState<'asc' | 'desc'>('desc');
+
+    const searchParams = useSearchParams();
+
+    useEffect(() => {
+        const loadId = searchParams.get('load');
+        if (!loadId) return;
+        const report = getReportById(loadId);
+        if (report?.data) {
+            const data = report.data as any;
+            setDashboardData(data);
+            setActiveTab('general');
+            setPerspective('ads');
+            setSelectedKeys(new Set(Object.keys(data?.ads ?? {})));
+            setLastSelectedKey(null);
+        }
+    }, [searchParams]);
 
     const handleProcess = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -55,6 +75,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
 
             const result = await processDashboardData(formData);
             setDashboardData(result);
+            saveReport(result);
             setActiveTab('general');
             setPerspective('ads');
             setSelectedKeys(new Set(Object.keys(result.ads)));
@@ -856,23 +877,82 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                     </div>
                 )}
 
-                {activeTab === 'countries' && dashboardData.countryData && (
+                {activeTab === 'countries' && dashboardData.countryData && (() => {
+                    const cols = [
+                        { key: 'country', label: 'País', align: 'left' as const },
+                        { key: 'gasto', label: 'Gasto', align: 'right' as const },
+                        { key: 'roas', label: 'ROAS', align: 'right' as const },
+                        { key: 'ventas_organicas', label: 'Ventas Orgánicas', align: 'right' as const },
+                        { key: 'ventas_trackeadas', label: 'Ventas Trackeadas', align: 'right' as const },
+                        { key: 'total_ventas', label: 'Total Ventas', align: 'right' as const },
+                    ];
+                    const getSortVal = (row: any, k: string) =>
+                        k === 'total_ventas' ? (row.ventas_organicas ?? 0) + (row.ventas_trackeadas ?? 0) : row[k];
+                    const sorted = [...dashboardData.countryData].sort((a: any, b: any) => {
+                        const va = getSortVal(a, countrySortBy);
+                        const vb = getSortVal(b, countrySortBy);
+                        const cmp = typeof va === 'string'
+                            ? (va ?? '').localeCompare(vb ?? '')
+                            : (Number(va) ?? 0) - (Number(vb) ?? 0);
+                        return countrySortDir === 'asc' ? cmp : -cmp;
+                    });
+                    const toggleSort = (key: string) => {
+                        if (countrySortBy === key) setCountrySortDir(d => d === 'asc' ? 'desc' : 'asc');
+                        else { setCountrySortBy(key); setCountrySortDir('desc'); }
+                    };
+                    const totalGasto = dashboardData.countryData.reduce((s: number, r: any) => s + (r.gasto ?? 0), 0);
+                    const totalOrg = dashboardData.countryData.reduce((s: number, r: any) => s + (r.ventas_organicas ?? 0), 0);
+                    const totalTrack = dashboardData.countryData.reduce((s: number, r: any) => s + (r.ventas_trackeadas ?? 0), 0);
+                    const totalVentas = totalOrg + totalTrack;
+                    const roasGeneral = totalGasto > 0 ? totalTrack / totalGasto : 0;
+                    return (
                     <div className="space-y-6 text-gray-900">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                            <div className="bg-white p-4 rounded-lg shadow text-center border-l-4 border-red-500">
+                                <h4 className="text-xs font-medium text-gray-600 uppercase">Total Gasto</h4>
+                                <p className="text-xl font-bold text-red-600 mt-1">{formatCurrency(totalGasto)}</p>
+                            </div>
+                            <div className="bg-white p-4 rounded-lg shadow text-center border-l-4 border-green-500">
+                                <h4 className="text-xs font-medium text-gray-600 uppercase">Ventas Orgánicas</h4>
+                                <p className="text-xl font-bold text-green-600 mt-1">{formatCurrency(totalOrg)}</p>
+                            </div>
+                            <div className="bg-white p-4 rounded-lg shadow text-center border-l-4 border-blue-500">
+                                <h4 className="text-xs font-medium text-gray-600 uppercase">Ventas Trackeadas</h4>
+                                <p className="text-xl font-bold text-blue-600 mt-1">{formatCurrency(totalTrack)}</p>
+                            </div>
+                            <div className="bg-white p-4 rounded-lg shadow text-center border-l-4 border-gray-700">
+                                <h4 className="text-xs font-medium text-gray-600 uppercase">Total Ventas</h4>
+                                <p className="text-xl font-bold text-gray-900 mt-1">{formatCurrency(totalVentas)}</p>
+                            </div>
+                            <div className={`bg-white p-4 rounded-lg shadow text-center border-l-4 ${roasGeneral >= 2 ? 'border-green-500' : roasGeneral >= 1 ? 'border-yellow-500' : 'border-red-500'}`}>
+                                <h4 className="text-xs font-medium text-gray-600 uppercase">ROAS General</h4>
+                                <p className={`text-xl font-bold mt-1 ${roasGeneral >= 2 ? 'text-green-600' : roasGeneral >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>{roasGeneral.toFixed(2)}x</p>
+                            </div>
+                        </div>
                         <div className="bg-white rounded-lg shadow overflow-hidden">
                             <h3 className="text-lg font-semibold p-4 border-b bg-indigo-50 text-indigo-900">Vista de Países</h3>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
                                     <thead className="bg-gray-50">
                                         <tr>
-                                            <th className="px-4 py-3 text-left font-semibold text-gray-800">País</th>
-                                            <th className="px-4 py-3 text-right font-semibold text-gray-800">Gasto</th>
-                                            <th className="px-4 py-3 text-right font-semibold text-gray-800">ROAS</th>
-                                            <th className="px-4 py-3 text-right font-semibold text-gray-800">Ventas Orgánicas</th>
-                                            <th className="px-4 py-3 text-right font-semibold text-gray-800">Ventas Trackeadas</th>
+                                            {cols.map(({ key, label, align }) => (
+                                                <th
+                                                    key={key}
+                                                    className={`px-4 py-3 font-semibold text-gray-800 cursor-pointer select-none hover:bg-gray-100 transition-colors ${align === 'right' ? 'text-right' : 'text-left'}`}
+                                                    onClick={() => toggleSort(key)}
+                                                >
+                                                    <span className="inline-flex items-center gap-1">
+                                                        {label}
+                                                        {countrySortBy === key && (
+                                                            <span className="text-indigo-600">{countrySortDir === 'asc' ? '↑' : '↓'}</span>
+                                                        )}
+                                                    </span>
+                                                </th>
+                                            ))}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-200">
-                                        {dashboardData.countryData.map((row: any) => (
+                                        {sorted.map((row: any) => (
                                             <tr key={row.country} className="hover:bg-gray-50">
                                                 <td className="px-4 py-3 font-medium text-gray-900">{row.country}</td>
                                                 <td className="px-4 py-3 text-right text-red-600">{formatCurrency(row.gasto)}</td>
@@ -881,6 +961,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                                 </td>
                                                 <td className="px-4 py-3 text-right text-green-600">{formatCurrency(row.ventas_organicas)}</td>
                                                 <td className="px-4 py-3 text-right text-blue-600">{formatCurrency(row.ventas_trackeadas)}</td>
+                                                <td className="px-4 py-3 text-right font-semibold text-gray-900">{formatCurrency((row.ventas_organicas ?? 0) + (row.ventas_trackeadas ?? 0))}</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -888,7 +969,8 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                             </div>
                         </div>
                     </div>
-                )}
+                    );
+                })()}
             </div>
         </div>
     );
