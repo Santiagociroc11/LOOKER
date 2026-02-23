@@ -363,12 +363,12 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
     const factorAnalysis = qualityData?.factor_analysis;
 
     return (
-        <div className="min-h-screen bg-gray-100 p-6 font-sans">
+        <div className="min-h-screen bg-gray-100 p-6 font-sans text-gray-900">
             <div className="max-w-7xl mx-auto">
                 <div className="mb-6 flex justify-between items-center">
                     <div>
                         <h1 className="text-3xl font-bold text-gray-900">Dashboard Interactivo de ROAS</h1>
-                        <p className="text-gray-600 mt-1">Proyecto en análisis</p>
+                        <p className="text-gray-700 mt-1">Proyecto en análisis</p>
                     </div>
                     <button onClick={() => setDashboardData(null)} className="bg-indigo-600 text-white text-sm font-medium py-2 px-4 rounded-md hover:bg-indigo-700">
                         Analizar Otro Proyecto
@@ -380,14 +380,14 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                     <nav className="flex space-x-8 -mb-px">
                         <button
                             onClick={() => setActiveTab('general')}
-                            className={`py-4 px-1 text-sm font-medium border-b-2 ${activeTab === 'general' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                            className={`py-4 px-1 text-sm font-medium border-b-2 ${activeTab === 'general' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-700 hover:text-gray-900'}`}
                         >
                             Análisis General
                         </button>
                         {qualityData && (
                             <button
                                 onClick={() => setActiveTab('quality')}
-                                className={`py-4 px-1 text-sm font-medium border-b-2 ${activeTab === 'quality' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                                className={`py-4 px-1 text-sm font-medium border-b-2 ${activeTab === 'quality' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-700 hover:text-gray-900'}`}
                             >
                             Análisis por Calidad de Leads
                             </button>
@@ -395,7 +395,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                         {factorAnalysis && (
                             <button
                                 onClick={() => setActiveTab('factors')}
-                                className={`py-4 px-1 text-sm font-medium border-b-2 ${activeTab === 'factors' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                                className={`py-4 px-1 text-sm font-medium border-b-2 ${activeTab === 'factors' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-700 hover:text-gray-900'}`}
                             >
                                 Análisis de Factores
                             </button>
@@ -403,7 +403,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                         {dashboardData.countryData && (
                             <button
                                 onClick={() => setActiveTab('countries')}
-                                className={`py-4 px-1 text-sm font-medium border-b-2 ${activeTab === 'countries' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                                className={`py-4 px-1 text-sm font-medium border-b-2 ${activeTab === 'countries' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-700 hover:text-gray-900'}`}
                             >
                                 Vista de Países
                             </button>
@@ -411,7 +411,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                         {dashboardData.captationDaysData && dashboardData.captationDaysData.length > 0 && (
                             <button
                                 onClick={() => setActiveTab('captation')}
-                                className={`py-4 px-1 text-sm font-medium border-b-2 ${activeTab === 'captation' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                                className={`py-4 px-1 text-sm font-medium border-b-2 ${activeTab === 'captation' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-700 hover:text-gray-900'}`}
                             >
                                 Días de Captación
                             </button>
@@ -421,49 +421,49 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
 
                 {activeTab === 'general' && (
                     <div className="space-y-6">
-                        <div className="bg-slate-50 border-l-4 border-slate-500 p-4 rounded-lg">
+                        <div className="bg-slate-50 border-l-4 border-slate-500 p-4 rounded-lg text-gray-900">
                             <div className="flex justify-between items-center">
                                 <div>
-                                    <h3 className="font-semibold text-slate-800">Perspectiva de Análisis</h3>
-                                    <p className="text-sm text-slate-600">Cambia cómo analizas tus datos</p>
+                                    <h3 className="font-semibold text-gray-900">Perspectiva de Análisis</h3>
+                                    <p className="text-sm text-gray-700">Cambia cómo analizas tus datos</p>
                                 </div>
                                 <label className="flex items-center gap-2 cursor-pointer">
-                                    <span className="text-sm">Anuncio → Segmentaciones</span>
+                                    <span className="text-sm font-medium text-gray-800">Anuncio → Segmentaciones</span>
                                     <input type="checkbox" checked={perspective === 'segments'} onChange={(e) => { setPerspective(e.target.checked ? 'segments' : 'ads'); setSelectedKeys(new Set()); }} className="rounded" />
-                                    <span className="text-sm">Segmentación → Anuncios</span>
+                                    <span className="text-sm font-medium text-gray-800">Segmentación → Anuncios</span>
                                 </label>
                             </div>
                         </div>
 
                         {summaryForSelection && (
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div className="bg-white p-4 rounded-lg shadow text-center">
-                                    <h4 className="text-sm text-gray-500 uppercase">Ingresos {selectedKeys.size > 0 ? 'Seleccionados' : 'Totales'}</h4>
+                                <div className="bg-white p-4 rounded-lg shadow text-center text-gray-900">
+                                    <h4 className="text-sm font-medium text-gray-700 uppercase">Ingresos {selectedKeys.size > 0 ? 'Seleccionados' : 'Totales'}</h4>
                                     <p className="text-2xl font-bold text-green-600">{formatCurrency(summaryForSelection.total_revenue)}</p>
                                 </div>
-                                <div className="bg-white p-4 rounded-lg shadow text-center">
-                                    <h4 className="text-sm text-gray-500 uppercase">Gasto {selectedKeys.size > 0 ? 'Seleccionado' : 'Total'}</h4>
+                                <div className="bg-white p-4 rounded-lg shadow text-center text-gray-900">
+                                    <h4 className="text-sm font-medium text-gray-700 uppercase">Gasto {selectedKeys.size > 0 ? 'Seleccionado' : 'Total'}</h4>
                                     <p className="text-2xl font-bold text-red-600">{formatCurrency(summaryForSelection.total_spend)}</p>
                                 </div>
-                                <div className="bg-white p-4 rounded-lg shadow text-center">
-                                    <h4 className="text-sm text-gray-500 uppercase">ROAS</h4>
+                                <div className="bg-white p-4 rounded-lg shadow text-center text-gray-900">
+                                    <h4 className="text-sm font-medium text-gray-700 uppercase">ROAS</h4>
                                     <p className="text-2xl font-bold text-indigo-600">{summaryForSelection.total_roas.toFixed(2)}x</p>
                                 </div>
                             </div>
                         )}
 
                         <div className="flex flex-col lg:flex-row gap-6">
-                            <aside className="lg:w-1/3 bg-white rounded-lg shadow p-4">
+                            <aside className="lg:w-1/3 bg-white rounded-lg shadow p-4 text-gray-900">
                                 <div className="flex justify-between items-center mb-3">
-                                    <h2 className="font-bold">{perspective === 'ads' ? 'Análisis por Anuncio' : 'Análisis por Segmentación'}</h2>
+                                    <h2 className="font-bold text-gray-900">{perspective === 'ads' ? 'Análisis por Anuncio' : 'Análisis por Segmentación'}</h2>
                                     <div className="flex gap-2">
-                                        <button type="button" onClick={() => setSelectedKeys(new Set(sortedMainList.map((i) => i.key)))} className="text-xs bg-gray-200 hover:bg-gray-300 py-1 px-2 rounded">Todos</button>
-                                        <button type="button" onClick={() => setSelectedKeys(new Set())} className="text-xs bg-gray-200 hover:bg-gray-300 py-1 px-2 rounded">Ninguno</button>
+                                        <button type="button" onClick={() => setSelectedKeys(new Set(sortedMainList.map((i) => i.key)))} className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-800 py-1 px-2 rounded font-medium">Todos</button>
+                                        <button type="button" onClick={() => setSelectedKeys(new Set())} className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-800 py-1 px-2 rounded font-medium">Ninguno</button>
                                     </div>
                                 </div>
                                 <div className="mb-2">
-                                    <label className="block text-xs font-medium text-gray-700 mb-1">Ordenar por:</label>
-                                    <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="block w-full text-xs border rounded px-2 py-1">
+                                    <label className="block text-xs font-medium text-gray-800 mb-1">Ordenar por:</label>
+                                    <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="block w-full text-xs border border-gray-300 rounded px-2 py-1 text-gray-900 bg-white">
                                         <option value="profit">Utilidad</option>
                                         <option value="revenue">Ingresos</option>
                                         <option value="spend">Gasto</option>
@@ -472,14 +472,14 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                     </select>
                                 </div>
                                 <div className="max-h-[60vh] overflow-auto">
-                                    <table className="w-full text-xs">
+                                    <table className="w-full text-xs text-gray-900">
                                         <thead className="bg-gray-50 sticky top-0">
                                             <tr>
-                                                <th className="px-2 py-2 text-left">{perspective === 'ads' ? 'Anuncio' : 'Segmentación'}</th>
-                                                <th className="px-1 py-2 text-right">Ingresos</th>
-                                                <th className="px-1 py-2 text-right">Gasto</th>
-                                                <th className="px-1 py-2 text-right">Utilidad</th>
-                                                <th className="px-1 py-2 text-right">ROAS</th>
+                                                <th className="px-2 py-2 text-left font-semibold text-gray-800">{perspective === 'ads' ? 'Anuncio' : 'Segmentación'}</th>
+                                                <th className="px-1 py-2 text-right font-semibold text-gray-800">Ingresos</th>
+                                                <th className="px-1 py-2 text-right font-semibold text-gray-800">Gasto</th>
+                                                <th className="px-1 py-2 text-right font-semibold text-gray-800">Utilidad</th>
+                                                <th className="px-1 py-2 text-right font-semibold text-gray-800">ROAS</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -489,7 +489,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                                     onClick={(e) => handleMainRowClick(item.key, e)}
                                                     className={`cursor-pointer hover:bg-gray-50 ${selectedKeys.has(item.key) ? 'bg-indigo-50' : ''}`}
                                                 >
-                                                    <td className="px-2 py-2 font-medium truncate max-w-[120px]" title={item.name}>{item.name}</td>
+                                                    <td className="px-2 py-2 font-medium text-gray-900 truncate max-w-[120px]" title={item.name}>{item.name}</td>
                                                     <td className="px-1 py-2 text-right text-green-600">${formatCompact(item.total_revenue)}</td>
                                                     <td className="px-1 py-2 text-right text-red-600">${formatCompact(item.total_spend)}</td>
                                                     <td className={`px-1 py-2 text-right font-bold ${item.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>${formatCompact(item.profit)}</td>
@@ -501,46 +501,46 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                 </div>
                             </aside>
 
-                            <main className="lg:w-2/3 bg-white rounded-lg shadow p-6">
+                            <main className="lg:w-2/3 bg-white rounded-lg shadow p-6 text-gray-900">
                                 {selectedKeys.size === 0 ? (
-                                    <div className="text-center py-12 text-gray-500">
-                                        <p className="text-xl font-semibold">Selecciona uno o más {perspective === 'ads' ? 'anuncios' : 'segmentaciones'}</p>
-                                        <p className="mt-2">Los detalles aparecerán aquí.</p>
+                                    <div className="text-center py-12 text-gray-700">
+                                        <p className="text-xl font-semibold text-gray-800">Selecciona uno o más {perspective === 'ads' ? 'anuncios' : 'segmentaciones'}</p>
+                                        <p className="mt-2 text-gray-600">Los detalles aparecerán aquí.</p>
                                     </div>
                                 ) : selectedDetails ? (
                                     <>
-                                        <h2 className="text-xl font-bold mb-4">Resumen de la Selección ({selectedKeys.size} {perspective === 'ads' ? 'anuncios' : 'segmentaciones'})</h2>
+                                        <h2 className="text-xl font-bold text-gray-900 mb-4">Resumen de la Selección ({selectedKeys.size} {perspective === 'ads' ? 'anuncios' : 'segmentaciones'})</h2>
                                         <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
                                             <div className="p-4 bg-gray-50 rounded text-center">
-                                                <h4 className="text-xs text-gray-500 uppercase">Leads</h4>
+                                                <h4 className="text-xs font-medium text-gray-700 uppercase">Leads</h4>
                                                 <p className="text-xl font-bold text-blue-600">{selectedDetails.totalLeads.toLocaleString()}</p>
                                             </div>
                                             <div className="p-4 bg-gray-50 rounded text-center">
-                                                <h4 className="text-xs text-gray-500 uppercase">Ventas</h4>
+                                                <h4 className="text-xs font-medium text-gray-700 uppercase">Ventas</h4>
                                                 <p className="text-xl font-bold text-purple-600">{selectedDetails.totalSales.toLocaleString()}</p>
                                             </div>
                                             <div className="p-4 bg-gray-50 rounded text-center">
-                                                <h4 className="text-xs text-gray-500 uppercase">Conv%</h4>
-                                                <p className="text-xl font-bold">{selectedDetails.totalLeads > 0 ? ((selectedDetails.totalSales / selectedDetails.totalLeads) * 100).toFixed(2) : 0}%</p>
+                                                <h4 className="text-xs font-medium text-gray-700 uppercase">Conv%</h4>
+                                                <p className="text-xl font-bold text-gray-900">{selectedDetails.totalLeads > 0 ? ((selectedDetails.totalSales / selectedDetails.totalLeads) * 100).toFixed(2) : 0}%</p>
                                             </div>
                                             <div className="p-4 bg-gray-50 rounded text-center">
-                                                <h4 className="text-xs text-gray-500 uppercase">Ingresos</h4>
+                                                <h4 className="text-xs font-medium text-gray-700 uppercase">Ingresos</h4>
                                                 <p className="text-xl font-bold text-green-600">{formatCurrency(selectedDetails.totalRevenue)}</p>
                                             </div>
                                             <div className="p-4 bg-gray-50 rounded text-center">
-                                                <h4 className="text-xs text-gray-500 uppercase">Gasto</h4>
+                                                <h4 className="text-xs font-medium text-gray-700 uppercase">Gasto</h4>
                                                 <p className="text-xl font-bold text-red-600">{formatCurrency(selectedDetails.totalSpend)}</p>
                                             </div>
                                             <div className="p-4 bg-gray-50 rounded text-center">
-                                                <h4 className="text-xs text-gray-500 uppercase">Utilidad</h4>
+                                                <h4 className="text-xs font-medium text-gray-700 uppercase">Utilidad</h4>
                                                 <p className={`text-xl font-bold ${selectedDetails.totalRevenue - selectedDetails.totalSpend >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                                                     {formatCurrency(selectedDetails.totalRevenue - selectedDetails.totalSpend)}
                                                 </p>
                                             </div>
                                         </div>
                                         <div className="flex justify-between items-center mb-2">
-                                            <h3 className="font-semibold">Análisis Combinado de {perspective === 'ads' ? 'Segmentaciones' : 'Anuncios'}</h3>
-                                            <select value={detailSortBy} onChange={(e) => setDetailSortBy(e.target.value)} className="text-sm border rounded px-2 py-1">
+                                            <h3 className="font-semibold text-gray-900">Análisis Combinado de {perspective === 'ads' ? 'Segmentaciones' : 'Anuncios'}</h3>
+                                            <select value={detailSortBy} onChange={(e) => setDetailSortBy(e.target.value)} className="text-sm border border-gray-300 rounded px-2 py-1 text-gray-900 bg-white">
                                                 <option value="profit">Beneficio</option>
                                                 <option value="revenue">Ingresos</option>
                                                 <option value="leads">Leads</option>
@@ -548,34 +548,34 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                             </select>
                                         </div>
                                         <div className="overflow-x-auto">
-                                            <table className="w-full text-sm">
+                                            <table className="w-full text-sm text-gray-900">
                                                 <thead className="bg-gray-50">
                                                     <tr>
-                                                        <th className="px-4 py-2 text-left">Nombre</th>
-                                                        <th className="px-4 py-2 text-right">Leads</th>
-                                                        <th className="px-4 py-2 text-right">Ventas</th>
-                                                        <th className="px-4 py-2 text-right">ROAS</th>
-                                                        <th className="px-4 py-2 text-right">Ingresos</th>
-                                                        <th className="px-4 py-2 text-right">Gasto</th>
-                                                        <th className="px-4 py-2 text-right">Utilidad</th>
-                                                        <th className="px-4 py-2 text-right">Conv%</th>
-                                                        <th className="px-4 py-2 text-right">CPL</th>
+                                                        <th className="px-4 py-2 text-left font-semibold text-gray-800">Nombre</th>
+                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">Leads</th>
+                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">Ventas</th>
+                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">ROAS</th>
+                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">Ingresos</th>
+                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">Gasto</th>
+                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">Utilidad</th>
+                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">Conv%</th>
+                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">CPL</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     {selectedDetails.details.map((d: any, i: number) => {
                                                         const roas = (d.spend_allocated || 0) > 0 ? (d.revenue || 0) / (d.spend_allocated || 0) : 0;
                                                         return (
-                                                            <tr key={i} className="border-t">
-                                                                <td className="px-4 py-2 font-medium">{d.name}</td>
+                                                            <tr key={i} className="border-t border-gray-200">
+                                                                <td className="px-4 py-2 font-medium text-gray-900">{d.name}</td>
                                                                 <td className="px-4 py-2 text-right">{d.leads?.toLocaleString()}</td>
                                                                 <td className="px-4 py-2 text-right">{d.sales?.toLocaleString()}</td>
                                                                 <td className={`px-4 py-2 text-right font-bold ${roas >= 2 ? 'text-green-600' : roas >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>{roas.toFixed(2)}x</td>
                                                                 <td className="px-4 py-2 text-right text-green-600">{formatCurrency(d.revenue || 0)}</td>
                                                                 <td className="px-4 py-2 text-right text-red-600">{formatCurrency(d.spend_allocated || 0)}</td>
                                                                 <td className={`px-4 py-2 text-right font-bold ${(d.profit || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(d.profit || 0)}</td>
-                                                                <td className="px-4 py-2 text-right">{(d.conversion_rate || 0).toFixed(2)}%</td>
-                                                                <td className="px-4 py-2 text-right">{formatCurrency(d.cpl || 0)}</td>
+                                                                <td className="px-4 py-2 text-right text-gray-900">{(d.conversion_rate || 0).toFixed(2)}%</td>
+                                                                <td className="px-4 py-2 text-right text-gray-900">{formatCurrency(d.cpl || 0)}</td>
                                                             </tr>
                                                         );
                                                     })}
@@ -590,22 +590,22 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                 )}
 
                 {activeTab === 'quality' && qualityData && (
-                    <div className="space-y-6">
+                    <div className="space-y-6 text-gray-900">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                             <div className="bg-white p-4 rounded-lg shadow text-center bg-gradient-to-r from-purple-50 to-pink-50">
-                                <h4 className="text-sm font-medium text-purple-700">Segmentos de Calidad</h4>
+                                <h4 className="text-sm font-semibold text-purple-800">Segmentos de Calidad</h4>
                                 <p className="text-2xl font-bold text-purple-600">{qualityData.segments?.length || 0}</p>
                             </div>
                             <div className="bg-white p-4 rounded-lg shadow text-center bg-gradient-to-r from-green-50 to-blue-50">
-                                <h4 className="text-sm font-medium text-green-700">Ingresos Totales</h4>
+                                <h4 className="text-sm font-semibold text-green-800">Ingresos Totales</h4>
                                 <p className="text-2xl font-bold text-green-600">{formatCurrency(qualityData.summary?.total_revenue || 0)}</p>
                             </div>
                             <div className="bg-white p-4 rounded-lg shadow text-center bg-gradient-to-r from-yellow-50 to-orange-50">
-                                <h4 className="text-sm font-medium text-yellow-700">ROAS Promedio</h4>
+                                <h4 className="text-sm font-semibold text-yellow-800">ROAS Promedio</h4>
                                 <p className="text-2xl font-bold text-yellow-600">{(qualityData.summary?.total_roas || 0).toFixed(2)}x</p>
                             </div>
                             <div className="bg-white p-4 rounded-lg shadow text-center bg-gradient-to-r from-indigo-50 to-purple-50">
-                                <h4 className="text-sm font-medium text-indigo-700">Gasto Total</h4>
+                                <h4 className="text-sm font-semibold text-indigo-800">Gasto Total</h4>
                                 <p className="text-2xl font-bold text-indigo-600">{formatCurrency(qualityData.summary?.total_spend || 0)}</p>
                             </div>
                         </div>
@@ -620,24 +620,24 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                 });
                                 const labels: Record<string, string> = { estudios: 'Estudios', ingresos: 'Ingresos', ocupacion: 'Ocupación', edad_especifica: 'Edad' };
                                 return (
-                                    <div key={cat} className="bg-white rounded-lg shadow p-4">
-                                        <h4 className="font-semibold mb-3 text-indigo-700">Por {labels[cat]}</h4>
+                                    <div key={cat} className="bg-white rounded-lg shadow p-4 text-gray-900">
+                                        <h4 className="font-semibold mb-3 text-indigo-800">Por {labels[cat]}</h4>
                                         <div className="overflow-x-auto">
                                             <table className="w-full text-sm">
                                                 <thead className="bg-gray-50">
                                                     <tr>
-                                                        <th className="px-3 py-2 text-left">{labels[cat]}</th>
-                                                        <th className="px-3 py-2 text-center">Leads</th>
-                                                        <th className="px-3 py-2 text-center">Gasto</th>
-                                                        <th className="px-3 py-2 text-center">Conv%</th>
-                                                        <th className="px-3 py-2 text-center">ROAS</th>
-                                                        <th className="px-3 py-2 text-center">Profit</th>
+                                                        <th className="px-3 py-2 text-left font-semibold text-gray-800">{labels[cat]}</th>
+                                                        <th className="px-3 py-2 text-center font-semibold text-gray-800">Leads</th>
+                                                        <th className="px-3 py-2 text-center font-semibold text-gray-800">Gasto</th>
+                                                        <th className="px-3 py-2 text-center font-semibold text-gray-800">Conv%</th>
+                                                        <th className="px-3 py-2 text-center font-semibold text-gray-800">ROAS</th>
+                                                        <th className="px-3 py-2 text-center font-semibold text-gray-800">Profit</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     {rows.map((r) => (
-                                                        <tr key={r.name} className="border-t hover:bg-gray-50">
-                                                            <td className="px-3 py-2 font-medium">{r.name}</td>
+                                                        <tr key={r.name} className="border-t border-gray-200 hover:bg-gray-50">
+                                                            <td className="px-3 py-2 font-medium text-gray-900">{r.name}</td>
                                                             <td className="px-3 py-2 text-center text-blue-600">{r.leads.toLocaleString()}</td>
                                                             <td className="px-3 py-2 text-center text-purple-600">{formatCurrency(r.spend)}</td>
                                                             <td className={`px-3 py-2 text-center ${r.conv >= 5 ? 'text-green-600' : r.conv >= 2 ? 'text-yellow-600' : 'text-red-600'}`}>{r.conv.toFixed(1)}%</td>
@@ -691,12 +691,12 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                             <h5 className="font-medium text-green-700 mb-2">{fieldNames[field]}</h5>
                                             <div className="space-y-2">
                                                 {Object.entries(items).map(([value, stats]: [string, any]) => (
-                                                    <div key={value} className="bg-white p-3 rounded text-sm border">
+                                                    <div key={value} className="bg-white p-3 rounded text-sm border border-gray-200">
                                                         <div className="flex justify-between">
-                                                            <span className="font-medium">{value}</span>
+                                                            <span className="font-medium text-gray-900">{value}</span>
                                                             <span className="text-green-600 font-semibold">{stats.ratio}%</span>
                                                         </div>
-                                                        <div className="text-xs text-gray-600">
+                                                        <div className="text-xs text-gray-700">
                                                             {stats.good_leads} leads exitosos de {stats.total_leads} total
                                                             {stats.avg_roas_good > 0 && ` • ROAS prom: ${stats.avg_roas_good}x`}
                                                         </div>
@@ -710,12 +710,12 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                     <div className="mt-4">
                                         <h5 className="font-medium text-green-700 mb-2">Combinaciones Exitosas</h5>
                                         {Object.entries(factorAnalysis.good_factors.combinations).map(([combo, stats]: [string, any]) => (
-                                            <div key={combo} className="bg-white p-3 rounded text-sm border mb-2">
+                                            <div key={combo} className="bg-white p-3 rounded text-sm border border-gray-200 mb-2">
                                                 <div className="flex justify-between">
-                                                    <span className="font-medium">{combo}</span>
+                                                    <span className="font-medium text-gray-900">{combo}</span>
                                                     <span className="text-green-600 font-semibold">{stats.ratio}%</span>
                                                 </div>
-                                                <div className="text-xs text-gray-600">{stats.good_leads} leads exitosos de {stats.total_leads} total</div>
+                                                <div className="text-xs text-gray-700">{stats.good_leads} leads exitosos de {stats.total_leads} total</div>
                                             </div>
                                         ))}
                                     </div>
@@ -756,7 +756,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                                     <span className="font-medium">{combo}</span>
                                                     <span className="text-red-600 font-semibold">{stats.ratio}%</span>
                                                 </div>
-                                                <div className="text-xs text-gray-600">{stats.good_leads} leads exitosos de {stats.total_leads} total</div>
+                                                <div className="text-xs text-gray-700">{stats.good_leads} leads exitosos de {stats.total_leads} total</div>
                                             </div>
                                         ))}
                                     </div>
@@ -764,7 +764,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                             </div>
                         </div>
 
-                        <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
+                        <div className="bg-blue-50 p-6 rounded-lg border border-blue-200 text-gray-900">
                             <h5 className="font-semibold text-blue-800 mb-4">Recomendaciones de Acción</h5>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
@@ -789,10 +789,10 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                 )}
 
                 {activeTab === 'captation' && dashboardData.captationDaysData && dashboardData.captationDaysData.length > 0 && (
-                    <div className="space-y-6">
+                    <div className="space-y-6 text-gray-900">
                         <div className="bg-white rounded-lg shadow p-6">
                             <h3 className="text-lg font-semibold mb-2 text-indigo-800">Compras vs Días desde Registro</h3>
-                            <p className="text-sm text-gray-600 mb-6">
+                            <p className="text-sm text-gray-700 mb-6">
                                 Distribución de ventas según cuántos días pasaron entre el registro del lead y la compra. Útil para decidir si ampliar o reducir la ventana de captación.
                             </p>
                             <div className="h-[400px] w-full">
@@ -805,8 +805,8 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                             if (!active || !payload?.length) return null;
                                             const d = payload[0]?.payload;
                                             return (
-                                                <div className="bg-white p-3 rounded-lg shadow-lg border border-gray-200 text-sm">
-                                                    <p className="font-semibold mb-2">{label}</p>
+                                                <div className="bg-white p-3 rounded-lg shadow-lg border border-gray-200 text-sm text-gray-900">
+                                                    <p className="font-semibold mb-2 text-gray-900">{label}</p>
                                                     <p>Compras: <strong>{d?.count ?? 0}</strong></p>
                                                     <p>Ingresos: <strong>{formatCurrency(d?.revenue ?? 0)}</strong></p>
                                                 </div>
@@ -827,22 +827,22 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                 return (
                                     <div className="mt-6 grid grid-cols-1 sm:grid-cols-4 gap-4">
                                         <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
-                                            <p className="text-xs font-medium text-indigo-700 uppercase">Primeros 7 días</p>
+                                            <p className="text-xs font-medium text-indigo-800 uppercase">Primeros 7 días</p>
                                             <p className="text-xl font-bold text-indigo-600">{by7.count} compras</p>
                                             <p className="text-sm text-indigo-600">{formatCurrency(by7.revenue)}</p>
-                                            <p className="text-xs text-gray-500">{totalCount > 0 ? ((by7.count / totalCount) * 100).toFixed(1) : 0}% del total</p>
+                                            <p className="text-xs text-gray-700">{totalCount > 0 ? ((by7.count / totalCount) * 100).toFixed(1) : 0}% del total</p>
                                         </div>
                                         <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
-                                            <p className="text-xs font-medium text-indigo-700 uppercase">Primeros 14 días</p>
+                                            <p className="text-xs font-medium text-indigo-800 uppercase">Primeros 14 días</p>
                                             <p className="text-xl font-bold text-indigo-600">{by14.count} compras</p>
                                             <p className="text-sm text-indigo-600">{formatCurrency(by14.revenue)}</p>
-                                            <p className="text-xs text-gray-500">{totalCount > 0 ? ((by14.count / totalCount) * 100).toFixed(1) : 0}% del total</p>
+                                            <p className="text-xs text-gray-700">{totalCount > 0 ? ((by14.count / totalCount) * 100).toFixed(1) : 0}% del total</p>
                                         </div>
                                         <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
-                                            <p className="text-xs font-medium text-indigo-700 uppercase">Primeros 30 días</p>
+                                            <p className="text-xs font-medium text-indigo-800 uppercase">Primeros 30 días</p>
                                             <p className="text-xl font-bold text-indigo-600">{by30.count} compras</p>
                                             <p className="text-sm text-indigo-600">{formatCurrency(by30.revenue)}</p>
-                                            <p className="text-xs text-gray-500">{totalCount > 0 ? ((by30.count / totalCount) * 100).toFixed(1) : 0}% del total</p>
+                                            <p className="text-xs text-gray-700">{totalCount > 0 ? ((by30.count / totalCount) * 100).toFixed(1) : 0}% del total</p>
                                         </div>
                                         <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
                                             <p className="text-xs font-medium text-gray-700 uppercase">Total</p>
@@ -857,24 +857,24 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                 )}
 
                 {activeTab === 'countries' && dashboardData.countryData && (
-                    <div className="space-y-6">
+                    <div className="space-y-6 text-gray-900">
                         <div className="bg-white rounded-lg shadow overflow-hidden">
-                            <h3 className="text-lg font-semibold p-4 border-b bg-indigo-50 text-indigo-800">Vista de Países</h3>
+                            <h3 className="text-lg font-semibold p-4 border-b bg-indigo-50 text-indigo-900">Vista de Países</h3>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
                                     <thead className="bg-gray-50">
                                         <tr>
-                                            <th className="px-4 py-3 text-left font-medium text-gray-700">País</th>
-                                            <th className="px-4 py-3 text-right font-medium text-gray-700">Gasto</th>
-                                            <th className="px-4 py-3 text-right font-medium text-gray-700">ROAS</th>
-                                            <th className="px-4 py-3 text-right font-medium text-gray-700">Ventas Orgánicas</th>
-                                            <th className="px-4 py-3 text-right font-medium text-gray-700">Ventas Trackeadas</th>
+                                            <th className="px-4 py-3 text-left font-semibold text-gray-800">País</th>
+                                            <th className="px-4 py-3 text-right font-semibold text-gray-800">Gasto</th>
+                                            <th className="px-4 py-3 text-right font-semibold text-gray-800">ROAS</th>
+                                            <th className="px-4 py-3 text-right font-semibold text-gray-800">Ventas Orgánicas</th>
+                                            <th className="px-4 py-3 text-right font-semibold text-gray-800">Ventas Trackeadas</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-200">
                                         {dashboardData.countryData.map((row: any) => (
                                             <tr key={row.country} className="hover:bg-gray-50">
-                                                <td className="px-4 py-3 font-medium">{row.country}</td>
+                                                <td className="px-4 py-3 font-medium text-gray-900">{row.country}</td>
                                                 <td className="px-4 py-3 text-right text-red-600">{formatCurrency(row.gasto)}</td>
                                                 <td className={`px-4 py-3 text-right font-bold ${row.roas >= 2 ? 'text-green-600' : row.roas >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>
                                                     {row.roas.toFixed(2)}x
