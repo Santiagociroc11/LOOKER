@@ -300,51 +300,51 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
 
     if (!dashboardData) {
         return (
-            <div className="min-h-screen bg-gray-100 p-6 font-sans">
+            <div className="min-h-screen bg-gray-100 p-6 font-sans text-gray-900">
                 <div className="max-w-4xl mx-auto">
                     <header className="text-center mb-6">
                         <h1 className="text-3xl md:text-4xl font-bold text-gray-900">Dashboard Interactivo de ROAS</h1>
-                        <p className="text-gray-600 mt-2">Analiza el rendimiento de tus campañas de forma visual e interactiva.</p>
+                        <p className="text-gray-700 mt-2">Analiza el rendimiento de tus campañas de forma visual e interactiva.</p>
                     </header>
 
-                    <div className="bg-white rounded-xl shadow-lg p-6">
-                        <h2 className="text-xl font-semibold mb-4 border-b pb-2">Configuración del Análisis</h2>
+                    <div className="bg-white rounded-xl shadow-lg p-6 text-gray-900">
+                        <h2 className="text-xl font-semibold mb-4 border-b border-gray-200 pb-2 text-gray-900">Configuración del Análisis</h2>
                         <form onSubmit={handleProcess} className="space-y-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">1. Tabla Base (Leads)</label>
-                                    <select name="base_table" required className="block w-full px-3 py-2 border border-gray-300 rounded-md" value={baseTable} onChange={(e) => setBaseTable(e.target.value)}>
+                                    <label className="block text-sm font-medium text-gray-800 mb-2">1. Tabla Base (Leads)</label>
+                                    <select name="base_table" required className="block w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 bg-white" value={baseTable} onChange={(e) => setBaseTable(e.target.value)}>
                                         <option value="">-- Selecciona --</option>
                                         {tables.map((t) => <option key={t} value={t}>{t}</option>)}
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">2. Tabla de Ventas</label>
-                                    <select name="sales_table" required className="block w-full px-3 py-2 border border-gray-300 rounded-md" value={salesTable} onChange={(e) => setSalesTable(e.target.value)}>
+                                    <label className="block text-sm font-medium text-gray-800 mb-2">2. Tabla de Ventas</label>
+                                    <select name="sales_table" required className="block w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 bg-white" value={salesTable} onChange={(e) => setSalesTable(e.target.value)}>
                                         <option value="">-- Selecciona --</option>
                                         {tables.map((t) => <option key={t} value={t}>{t}</option>)}
                                     </select>
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">3. Opciones</label>
-                                <label className="flex items-center">
+                                <label className="block text-sm font-medium text-gray-800 mb-2">3. Opciones</label>
+                                <label className="flex items-center cursor-pointer">
                                     <input type="checkbox" checked={multiplyRevenue} onChange={(e) => setMultiplyRevenue(e.target.checked)} className="h-4 w-4 text-indigo-600 rounded" />
-                                    <span className="ml-2 text-sm">Multiplicar ingresos x2 (Coproducción)</span>
+                                    <span className="ml-2 text-sm font-medium text-gray-800">Multiplicar ingresos x2 (Coproducción)</span>
                                 </label>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">4. Tasa de Cambio (opcional)</label>
-                                <input type="number" step="0.01" placeholder="Ej: 1050" className="block w-full px-4 py-2 border border-gray-300 rounded-md" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} />
+                                <label className="block text-sm font-medium text-gray-800 mb-2">4. Tasa de Cambio (opcional)</label>
+                                <input type="number" step="0.01" placeholder="Ej: 1050" className="block w-full px-4 py-2 border border-gray-300 rounded-md text-gray-900 bg-white placeholder:text-gray-600" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">5. Reporte de Gastos (CSV)</label>
-                                <input type="file" accept=".csv" required className="block w-full text-sm" onChange={(e) => setCsvFile(e.target.files?.[0] || null)} />
+                                <label className="block text-sm font-medium text-gray-800 mb-2">5. Reporte de Gastos (CSV)</label>
+                                <input type="file" accept=".csv" required className="block w-full text-sm text-gray-900 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" onChange={(e) => setCsvFile(e.target.files?.[0] || null)} />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">6. Reporte por País (CSV, opcional)</label>
-                                <input type="file" accept=".csv" className="block w-full text-sm" onChange={(e) => setCountryCsvFile(e.target.files?.[0] || null)} />
-                                <p className="text-xs text-gray-500 mt-1">Formato: Day, Amount Spent, Campaign Name, Leads, ..., Country</p>
+                                <label className="block text-sm font-medium text-gray-800 mb-2">6. Reporte por País (CSV, opcional)</label>
+                                <input type="file" accept=".csv" className="block w-full text-sm text-gray-900 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" onChange={(e) => setCountryCsvFile(e.target.files?.[0] || null)} />
+                                <p className="text-xs text-gray-600 mt-1">Formato: Day, Amount Spent, Campaign Name, Leads, ..., Country</p>
                             </div>
                             <div className="flex justify-center">
                                 <button type="submit" disabled={isLoading} className="bg-indigo-600 text-white font-bold py-3 px-8 rounded-md hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2">
