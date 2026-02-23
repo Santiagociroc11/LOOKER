@@ -512,27 +512,34 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                         <p className="text-2xl font-bold text-indigo-600">{summaryForSelection.total_roas.toFixed(2)}x</p>
                                     </div>
                                 </div>
-                                {dashboardData.trafficTypeSummary && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                        <div className="bg-blue-50 p-4 rounded-lg shadow text-center border border-blue-100">
-                                            <h4 className="text-xs font-medium text-blue-800 uppercase">Tráfico Frío (PF)</h4>
-                                            <p className="text-lg font-bold text-blue-600">{dashboardData.trafficTypeSummary.frio.sales} ventas</p>
-                                            <p className="text-sm font-semibold text-blue-700">{formatCurrency(dashboardData.trafficTypeSummary.frio.revenue)}</p>
-                                        </div>
-                                        <div className="bg-orange-50 p-4 rounded-lg shadow text-center border border-orange-100">
-                                            <h4 className="text-xs font-medium text-orange-800 uppercase">Tráfico Caliente (PQ)</h4>
-                                            <p className="text-lg font-bold text-orange-600">{dashboardData.trafficTypeSummary.caliente.sales} ventas</p>
-                                            <p className="text-sm font-semibold text-orange-700">{formatCurrency(dashboardData.trafficTypeSummary.caliente.revenue)}</p>
-                                        </div>
-                                        {(dashboardData.trafficTypeSummary.otro.sales > 0 || dashboardData.trafficTypeSummary.otro.revenue > 0) && (
-                                            <div className="bg-gray-50 p-4 rounded-lg shadow text-center border border-gray-200">
-                                                <h4 className="text-xs font-medium text-gray-800 uppercase">Otro</h4>
-                                                <p className="text-lg font-bold text-gray-600">{dashboardData.trafficTypeSummary.otro.sales} ventas</p>
-                                                <p className="text-sm font-semibold text-gray-700">{formatCurrency(dashboardData.trafficTypeSummary.otro.revenue)}</p>
+                                {dashboardData.trafficTypeSummary && (() => {
+                                    const ts = dashboardData.trafficTypeSummary;
+                                    const totalVentas = ts.frio.sales + ts.caliente.sales + ts.otro.sales;
+                                    const totalIngresos = ts.frio.revenue + ts.caliente.revenue + ts.otro.revenue;
+                                    const pctV = (n: number) => totalVentas > 0 ? ((n / totalVentas) * 100).toFixed(1) : '0';
+                                    const pctI = (n: number) => totalIngresos > 0 ? ((n / totalIngresos) * 100).toFixed(1) : '0';
+                                    return (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                            <div className="bg-blue-50 p-4 rounded-lg shadow text-center border border-blue-100">
+                                                <h4 className="text-xs font-medium text-blue-800 uppercase">Tráfico Frío (PF)</h4>
+                                                <p className="text-lg font-bold text-blue-600">{ts.frio.sales} ventas <span className="text-blue-500 font-normal">({pctV(ts.frio.sales)}%)</span></p>
+                                                <p className="text-sm font-semibold text-blue-700">{formatCurrency(ts.frio.revenue)} <span className="text-blue-600 font-normal">({pctI(ts.frio.revenue)}%)</span></p>
                                             </div>
-                                        )}
-                                    </div>
-                                )}
+                                            <div className="bg-orange-50 p-4 rounded-lg shadow text-center border border-orange-100">
+                                                <h4 className="text-xs font-medium text-orange-800 uppercase">Tráfico Caliente (PQ)</h4>
+                                                <p className="text-lg font-bold text-orange-600">{ts.caliente.sales} ventas <span className="text-orange-500 font-normal">({pctV(ts.caliente.sales)}%)</span></p>
+                                                <p className="text-sm font-semibold text-orange-700">{formatCurrency(ts.caliente.revenue)} <span className="text-orange-600 font-normal">({pctI(ts.caliente.revenue)}%)</span></p>
+                                            </div>
+                                            {(ts.otro.sales > 0 || ts.otro.revenue > 0) && (
+                                                <div className="bg-gray-50 p-4 rounded-lg shadow text-center border border-gray-200">
+                                                    <h4 className="text-xs font-medium text-gray-800 uppercase">Otro</h4>
+                                                    <p className="text-lg font-bold text-gray-600">{ts.otro.sales} ventas <span className="text-gray-500 font-normal">({pctV(ts.otro.sales)}%)</span></p>
+                                                    <p className="text-sm font-semibold text-gray-700">{formatCurrency(ts.otro.revenue)} <span className="text-gray-600 font-normal">({pctI(ts.otro.revenue)}%)</span></p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
                             </>
                         )}
 
@@ -993,10 +1000,16 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                     const tsp = dashboardData.trafficTypeSpend || { frio: 0, caliente: 0, otro: 0 };
                     const roasFrio = tsp.frio > 0 ? ts.frio.revenue / tsp.frio : 0;
                     const roasCaliente = tsp.caliente > 0 ? ts.caliente.revenue / tsp.caliente : 0;
+                    const totalVentas = ts.frio.sales + ts.caliente.sales + ts.otro.sales;
+                    const totalIngresos = ts.frio.revenue + ts.caliente.revenue + ts.otro.revenue;
+                    const totalGasto = tsp.frio + tsp.caliente + tsp.otro;
+                    const pctV = (n: number) => totalVentas > 0 ? ((n / totalVentas) * 100).toFixed(1) : '0';
+                    const pctI = (n: number) => totalIngresos > 0 ? ((n / totalIngresos) * 100).toFixed(1) : '0';
+                    const pctG = (n: number) => totalGasto > 0 ? ((n / totalGasto) * 100).toFixed(1) : '0';
                     const barData = [
-                        { tipo: 'Tráfico Frío (PF)', ventas: ts.frio.sales, ingresos: ts.frio.revenue, gasto: tsp.frio, roas: roasFrio },
-                        { tipo: 'Tráfico Caliente (PQ)', ventas: ts.caliente.sales, ingresos: ts.caliente.revenue, gasto: tsp.caliente, roas: roasCaliente },
-                        ...(ts.otro.sales > 0 || ts.otro.revenue > 0 ? [{ tipo: 'Otro', ventas: ts.otro.sales, ingresos: ts.otro.revenue, gasto: tsp.otro, roas: tsp.otro > 0 ? ts.otro.revenue / tsp.otro : 0 }] : [])
+                        { tipo: 'Tráfico Frío (PF)', ventas: ts.frio.sales, ingresos: ts.frio.revenue, gasto: tsp.frio, roas: roasFrio, pctVentas: pctV(ts.frio.sales), pctIngresos: pctI(ts.frio.revenue) },
+                        { tipo: 'Tráfico Caliente (PQ)', ventas: ts.caliente.sales, ingresos: ts.caliente.revenue, gasto: tsp.caliente, roas: roasCaliente, pctVentas: pctV(ts.caliente.sales), pctIngresos: pctI(ts.caliente.revenue) },
+                        ...(ts.otro.sales > 0 || ts.otro.revenue > 0 ? [{ tipo: 'Otro', ventas: ts.otro.sales, ingresos: ts.otro.revenue, gasto: tsp.otro, roas: tsp.otro > 0 ? ts.otro.revenue / tsp.otro : 0, pctVentas: pctV(ts.otro.sales), pctIngresos: pctI(ts.otro.revenue) }] : [])
                     ];
                     const captationByTraffic = dashboardData.captationByTrafficType;
                     const chartData = captationByTraffic ? (() => {
@@ -1027,15 +1040,15 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
                                 <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
                                     <h4 className="text-xs font-medium text-blue-800 uppercase">Frío - Ventas</h4>
-                                    <p className="text-xl font-bold text-blue-600">{ts.frio.sales}</p>
+                                    <p className="text-xl font-bold text-blue-600">{ts.frio.sales} <span className="text-blue-500 text-sm font-normal">({pctV(ts.frio.sales)}%)</span></p>
                                 </div>
                                 <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
                                     <h4 className="text-xs font-medium text-blue-800 uppercase">Frío - Ingresos</h4>
-                                    <p className="text-lg font-bold text-blue-600">{formatCurrency(ts.frio.revenue)}</p>
+                                    <p className="text-lg font-bold text-blue-600">{formatCurrency(ts.frio.revenue)} <span className="text-blue-500 text-sm font-normal">({pctI(ts.frio.revenue)}%)</span></p>
                                 </div>
                                 <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
                                     <h4 className="text-xs font-medium text-blue-800 uppercase">Frío - Gasto</h4>
-                                    <p className="text-lg font-bold text-blue-600">{formatCurrency(tsp.frio)}</p>
+                                    <p className="text-lg font-bold text-blue-600">{formatCurrency(tsp.frio)} <span className="text-blue-500 text-sm font-normal">({pctG(tsp.frio)}%)</span></p>
                                 </div>
                                 <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
                                     <h4 className="text-xs font-medium text-blue-800 uppercase">Frío - ROAS</h4>
@@ -1043,15 +1056,15 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                 </div>
                                 <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
                                     <h4 className="text-xs font-medium text-orange-800 uppercase">Caliente - Ventas</h4>
-                                    <p className="text-xl font-bold text-orange-600">{ts.caliente.sales}</p>
+                                    <p className="text-xl font-bold text-orange-600">{ts.caliente.sales} <span className="text-orange-500 text-sm font-normal">({pctV(ts.caliente.sales)}%)</span></p>
                                 </div>
                                 <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
                                     <h4 className="text-xs font-medium text-orange-800 uppercase">Caliente - Ingresos</h4>
-                                    <p className="text-lg font-bold text-orange-600">{formatCurrency(ts.caliente.revenue)}</p>
+                                    <p className="text-lg font-bold text-orange-600">{formatCurrency(ts.caliente.revenue)} <span className="text-orange-500 text-sm font-normal">({pctI(ts.caliente.revenue)}%)</span></p>
                                 </div>
                                 <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
                                     <h4 className="text-xs font-medium text-orange-800 uppercase">Caliente - Gasto</h4>
-                                    <p className="text-lg font-bold text-orange-600">{formatCurrency(tsp.caliente)}</p>
+                                    <p className="text-lg font-bold text-orange-600">{formatCurrency(tsp.caliente)} <span className="text-orange-500 text-sm font-normal">({pctG(tsp.caliente)}%)</span></p>
                                 </div>
                                 <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
                                     <h4 className="text-xs font-medium text-orange-800 uppercase">Caliente - ROAS</h4>
@@ -1073,8 +1086,8 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                                 return (
                                                     <div className="bg-white p-3 rounded-lg shadow-lg border text-sm text-gray-900">
                                                         <p className="font-semibold">{d?.tipo}</p>
-                                                        <p>Ventas: <strong>{d?.ventas}</strong></p>
-                                                        <p>Ingresos: <strong>{formatCurrency(d?.ingresos ?? 0)}</strong></p>
+                                                        <p>Ventas: <strong>{d?.ventas}</strong> ({d?.pctVentas}%)</p>
+                                                        <p>Ingresos: <strong>{formatCurrency(d?.ingresos ?? 0)}</strong> ({d?.pctIngresos}%)</p>
                                                         <p>Gasto: <strong>{formatCurrency(d?.gasto ?? 0)}</strong></p>
                                                         <p>ROAS: <strong>{d?.roas?.toFixed(2)}x</strong></p>
                                                     </div>
