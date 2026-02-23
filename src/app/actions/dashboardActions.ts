@@ -134,12 +134,16 @@ async function getSalesByRegistrationDate(
             ORDER BY fecha_reg ASC
         `;
         const [rows] = await pool.query<any[]>(query);
-        return rows.map((r) => ({
-            date: String(r.fecha_reg || ''),
+        return rows.map((r) => {
+            const raw = r.fecha_reg;
+            const dateStr = raw instanceof Date ? raw.toISOString().slice(0, 10) : raw ? String(raw).slice(0, 10) : '';
+            return {
+            date: dateStr,
             leads: parseInt(r.total_leads, 10) || 0,
             sales: parseInt(r.total_sales, 10) || 0,
             revenue: parseFloat(r.total_revenue) || 0
-        }));
+        };
+        });
     } catch (error) {
         console.error('Error getSalesByRegistrationDate:', error);
         return null;

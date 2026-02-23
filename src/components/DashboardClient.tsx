@@ -11,6 +11,13 @@ function formatCurrency(value: number) {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
 }
 
+function formatDateShort(value: string | Date | null | undefined): string {
+    if (value == null) return '';
+    const d = typeof value === 'string' ? new Date(value) : value;
+    if (isNaN(d.getTime())) return String(value);
+    return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 function formatCompact(value: number) {
     if (Math.abs(value) >= 1000) {
         return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
@@ -845,7 +852,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                             </p>
                             <div className="h-[400px] w-full mb-6">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={dashboardData.salesByRegistrationDate.map((r: any) => ({ ...r, label: r.date }))} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                                    <BarChart data={dashboardData.salesByRegistrationDate.map((r: any) => ({ ...r, label: formatDateShort(r.date) }))} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                                         <XAxis dataKey="label" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={80} />
                                         <YAxis tick={{ fontSize: 11 }} />
@@ -855,7 +862,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                             const conv = d?.leads > 0 ? ((d?.sales / d?.leads) * 100).toFixed(1) : '0';
                                             return (
                                                 <div className="bg-white p-3 rounded-lg shadow-lg border border-gray-200 text-sm text-gray-900">
-                                                    <p className="font-semibold mb-2 text-gray-900">{d?.date}</p>
+                                                    <p className="font-semibold mb-2 text-gray-900">{formatDateShort(d?.date)}</p>
                                                     <p>Registros: <strong>{d?.leads ?? 0}</strong></p>
                                                     <p>Compraron: <strong>{d?.sales ?? 0}</strong></p>
                                                     <p>Conversión: <strong>{conv}%</strong></p>
@@ -883,7 +890,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                     <tbody className="divide-y divide-gray-200">
                                         {dashboardData.salesByRegistrationDate.map((row: any) => (
                                             <tr key={row.date} className="hover:bg-gray-50">
-                                                <td className="px-4 py-3 font-medium text-gray-900">{row.date}</td>
+                                                <td className="px-4 py-3 font-medium text-gray-900">{formatDateShort(row.date)}</td>
                                                 <td className="px-4 py-3 text-right text-gray-700">{row.leads}</td>
                                                 <td className="px-4 py-3 text-right font-semibold text-indigo-600">{row.sales}</td>
                                                 <td className="px-4 py-3 text-right">{row.leads > 0 ? ((row.sales / row.leads) * 100).toFixed(1) : 0}%</td>
