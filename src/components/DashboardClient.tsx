@@ -893,14 +893,8 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                         <YAxis
                                             yAxisId="right2"
                                             orientation="right"
-                                            domain={[0, (() => {
-                                                const convs = dashboardData.salesByRegistrationDate
-                                                    .map((r: any) => r.leads > 0 ? (r.sales / r.leads) * 100 : 0)
-                                                    .sort((a: number, b: number) => a - b);
-                                                const p90 = convs.length > 0 ? convs[Math.min(Math.floor(convs.length * 0.9), convs.length - 1)] : 0;
-                                                const scaleMax = Math.ceil((p90 || 0) * 1.5);
-                                                return Math.min(100, Math.max(3, scaleMax));
-                                            })()]}
+                                            domain={[0, 2]}
+                                            allowDataOverflow
                                             tick={{ fontSize: 10 }}
                                             tickFormatter={(v) => `${v}%`}
                                             width={45}
