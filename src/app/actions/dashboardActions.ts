@@ -213,6 +213,160 @@ async function getCountryColumn(baseTable: string): Promise<string | null> {
     return null;
 }
 
+async function getCampaignColumn(baseTable: string): Promise<string | null> {
+    const candidates = ['CAMPAÑA', 'CAMPANA', 'CAMPAIGN', 'Campaign'];
+    for (const col of candidates) {
+        if (await columnExists(baseTable, col)) return col;
+    }
+    return null;
+}
+
+async function getTrafficTypeSummary(
+    baseTable: string,
+    salesTable: string,
+    multiplyRevenue: boolean
+): Promise<{ frio: { leads: number; sales: number; revenue: number }; caliente: { leads: number; sales: number; revenue: number }; otro: { leads: number; sales: number; revenue: number } } | null> {
+    const campaignCol = await getCampaignColumn(baseTable);
+    if (!campaignCol) return null;
+
+    try {
+        const revenueMultiplier = multiplyRevenue ? '* 2' : '';
+        const query = `
+            SELECT
+                CASE
+                    WHEN UPPER(COALESCE(l.\`${campaignCol}\`, '')) LIKE '%PQ%' THEN 'caliente'
+                    WHEN UPPER(COALESCE(l.\`${campaignCol}\`, '')) LIKE '%PF%' THEN 'frio'
+                    ELSE 'otro'
+                END AS tipo_trafico,
+                COUNT(l.\`#\`) AS leads,
+                COUNT(v.cliente_id) AS sales,
+                COALESCE(SUM(CAST(REPLACE(v.monto, ',', '.') AS DECIMAL(10, 2))) ${revenueMultiplier}, 0) AS revenue
+            FROM \`${baseTable}\` AS l
+            LEFT JOIN \`${salesTable}\` AS v ON l.\`#\` = v.cliente_id AND (v.fuente IS NULL OR LOWER(v.fuente) NOT LIKE '%org%')
+            WHERE l.ANUNCIO IS NOT NULL AND l.ANUNCIO != '' AND l.SEGMENTACION IS NOT NULL
+            GROUP BY tipo_trafico
+        `;
+        const [rows] = await pool.query<any[]>(query);
+        const result = {
+            frio: { leads: 0, sales: 0, revenue: 0 },
+            caliente: { leads: 0, sales: 0, revenue: 0 },
+            otro: { leads: 0, sales: 0, revenue: 0 }
+        };
+        for (const r of rows) {
+            const tipo = String(r.tipo_trafico || 'otro').toLowerCase();
+            const key = tipo === 'frio' ? 'frio' : tipo === 'caliente' ? 'caliente' : 'otro';
+            result[key] = {
+                leads: parseInt(r.leads, 10) || 0,
+                sales: parseInt(r.sales, 10) || 0,
+                revenue: parseFloat(r.revenue) || 0
+            };
+        }
+        return result;
+    } catch (error) {
+        console.error('Error getTrafficTypeSummary:', error);
+        return null;
+    }
+}
+
+function getSpendByTrafficType(segmentationsData: Record<string, { campaign_name?: string; spend?: number }>): { frio: number; caliente: number; otro: number } {
+    const result = { frio: 0, caliente: 0, otro: 0 };
+    for (const seg of Object.values(segmentationsData)) {
+        const campaign = String(seg.campaign_name || '').toUpperCase();
+        const spend = seg.spend ?? 0;
+        if (campaign.includes('PQ')) result.caliente += spend;
+        else if (campaign.includes('PF')) result.frio += spend;
+        else result.otro += spend;
+    }
+    return result;
+}
+
+async function getSalesByRegistrationDateByTrafficType(
+    baseTable: string,
+    salesTable: string,
+    multiplyRevenue: boolean,
+    segmentationsData: Record<string, { campaign_name?: string; spend?: number }>,
+    spendByDate?: Record<string, number>
+): Promise<{ frio: { date: string; leads: number; sales: number; revenue: number; gasto: number; cpl: number }[]; caliente: { date: string; leads: number; sales: number; revenue: number; gasto: number; cpl: number }[]; otro: { date: string; leads: number; sales: number; revenue: number; gasto: number; cpl: number }[] } | null> {
+    const campaignCol = await getCampaignColumn(baseTable);
+    const regDateCandidates = ['FECHA_REGISTRO', 'FECHA', 'FECHA_CAPTACION', 'FECHA_REGISTO', 'fecha_registro', 'created_at'];
+    const regCol = await getDateColumn(baseTable, regDateCandidates);
+    if (!campaignCol || !regCol) return null;
+
+    try {
+        const revenueMultiplier = multiplyRevenue ? '* 2' : '';
+        const query = `
+            SELECT
+                DATE(l.\`${regCol}\`) AS fecha_reg,
+                CASE
+                    WHEN UPPER(COALESCE(l.\`${campaignCol}\`, '')) LIKE '%PQ%' THEN 'caliente'
+                    WHEN UPPER(COALESCE(l.\`${campaignCol}\`, '')) LIKE '%PF%' THEN 'frio'
+                    ELSE 'otro'
+                END AS tipo_trafico,
+                COUNT(DISTINCT l.\`#\`) AS leads,
+                COUNT(DISTINCT v.cliente_id) AS sales,
+                COALESCE(SUM(CAST(REPLACE(v.monto, ',', '.') AS DECIMAL(10, 2))) ${revenueMultiplier}, 0) AS revenue
+            FROM \`${baseTable}\` AS l
+            LEFT JOIN \`${salesTable}\` AS v ON l.\`#\` = v.cliente_id
+            WHERE l.\`${regCol}\` IS NOT NULL
+            GROUP BY DATE(l.\`${regCol}\`), tipo_trafico
+            ORDER BY fecha_reg ASC, tipo_trafico
+        `;
+        const [rows] = await pool.query<any[]>(query);
+        const byType: Record<string, Record<string, { leads: number; sales: number; revenue: number }>> = { frio: {}, caliente: {}, otro: {} };
+        for (const r of rows) {
+            const dateStr = r.fecha_reg instanceof Date ? r.fecha_reg.toISOString().slice(0, 10) : String(r.fecha_reg || '').slice(0, 10);
+            const tipo = String(r.tipo_trafico || 'otro').toLowerCase();
+            const key = tipo === 'frio' ? 'frio' : tipo === 'caliente' ? 'caliente' : 'otro';
+            if (!byType[key][dateStr]) byType[key][dateStr] = { leads: 0, sales: 0, revenue: 0 };
+            byType[key][dateStr] = {
+                leads: parseInt(r.leads, 10) || 0,
+                sales: parseInt(r.sales, 10) || 0,
+                revenue: parseFloat(r.revenue) || 0
+            };
+        }
+        const spendByDateByTrafficType: Record<string, { frio: number; caliente: number; otro: number }> = {};
+        if (spendByDate) {
+            for (const [dateKey, amount] of Object.entries(spendByDate)) {
+                const parts = dateKey.split('|');
+                if (parts.length >= 2) {
+                    const dateStr = parts[0];
+                    const spendKey = parts.slice(1).join('|');
+                    const seg = segmentationsData[spendKey];
+                    const campaign = String(seg?.campaign_name || '').toUpperCase();
+                    const tipo: 'frio' | 'caliente' | 'otro' = campaign.includes('PQ') ? 'caliente' : campaign.includes('PF') ? 'frio' : 'otro';
+                    if (!spendByDateByTrafficType[dateStr]) spendByDateByTrafficType[dateStr] = { frio: 0, caliente: 0, otro: 0 };
+                    spendByDateByTrafficType[dateStr][tipo] = (spendByDateByTrafficType[dateStr][tipo] || 0) + amount;
+                }
+            }
+        }
+        const buildArray = (tipo: 'frio' | 'caliente' | 'otro') => {
+            const dates = new Set([...Object.keys(byType[tipo]), ...Object.keys(spendByDateByTrafficType || {})]);
+            return Array.from(dates)
+                .sort()
+                .map((dateStr) => {
+                    const d = byType[tipo][dateStr] || { leads: 0, sales: 0, revenue: 0 };
+                    const gasto = spendByDateByTrafficType?.[dateStr]?.[tipo] ?? 0;
+                    return {
+                        date: dateStr,
+                        leads: d.leads,
+                        sales: d.sales,
+                        revenue: d.revenue,
+                        gasto,
+                        cpl: d.leads > 0 ? gasto / d.leads : 0
+                    };
+                });
+        };
+        return {
+            frio: buildArray('frio'),
+            caliente: buildArray('caliente'),
+            otro: buildArray('otro')
+        };
+    } catch (error) {
+        console.error('Error getSalesByRegistrationDateByTrafficType:', error);
+        return null;
+    }
+}
+
 async function getSalesByCountry(
     baseTable: string,
     salesTable: string,
@@ -613,6 +767,12 @@ export async function processDashboardData(formData: FormData) {
     const captationDaysData = await getPurchasesByDaysSinceRegistration(baseTable, salesTable, multiplyRevenue);
     const salesByRegistrationDate = await getSalesByRegistrationDate(baseTable, salesTable, multiplyRevenue, segmentationsData, spendByDate);
 
+    const trafficTypeSummary = await getTrafficTypeSummary(baseTable, salesTable, multiplyRevenue);
+    const trafficTypeSpend = getSpendByTrafficType(segmentationsData);
+    const captationByTrafficType = trafficTypeSummary
+        ? await getSalesByRegistrationDateByTrafficType(baseTable, salesTable, multiplyRevenue, segmentationsData, spendByDate)
+        : null;
+
     let countryData: { country: string; gasto: number; roas: number; ventas_organicas: number; ventas_trackeadas: number }[] | null = null;
 
     let salesByRegistrationDateByCountry: Record<string, { country: string; leads: number; sales: number; revenue: number; gasto: number }[]> | null = null;
@@ -747,6 +907,9 @@ export async function processDashboardData(formData: FormData) {
         salesByRegistrationDateByCountry,
         captationByAnuncio,
         captationBySegmentacion,
-        captationByPais
+        captationByPais,
+        trafficTypeSummary,
+        trafficTypeSpend,
+        captationByTrafficType
     };
 }

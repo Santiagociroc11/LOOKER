@@ -38,7 +38,8 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
     const [error, setError] = useState('');
     const [dashboardData, setDashboardData] = useState<any>(null);
 
-    const [activeTab, setActiveTab] = useState<'general' | 'quality' | 'factors' | 'countries' | 'captation'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'quality' | 'factors' | 'countries' | 'captation' | 'traffic'>('general');
+    const [trafficTypeFilter, setTrafficTypeFilter] = useState<'todos' | 'frio' | 'caliente'>('todos');
     const [perspective, setPerspective] = useState<'ads' | 'segments'>('ads');
     const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
     const [lastSelectedKey, setLastSelectedKey] = useState<string | null>(null);
@@ -139,7 +140,8 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                     spend_allocated: seg.spend_allocated,
                     profit: seg.profit,
                     conversion_rate: seg.conversion_rate,
-                    cpl: seg.cpl
+                    cpl: seg.cpl,
+                    campaign_name: seg.campaign_name
                 });
             }
         }
@@ -152,28 +154,30 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
         return segments;
     }, [dashboardData]);
 
+    const getTipoFromCampaign = (campaign: string) => {
+        const c = String(campaign || '').toUpperCase();
+        if (c.includes('PQ')) return 'caliente';
+        if (c.includes('PF')) return 'frio';
+        return 'otro';
+    };
+
     const mainListItems = useMemo(() => {
         if (!dashboardData?.ads) return [];
+        let items: { key: string; name: string; total_revenue: number; total_spend: number; profit: number; roas: number; tipos?: string[] }[];
         if (perspective === 'ads') {
-            return Object.entries(dashboardData.ads).map(([key, ad]: [string, any]) => ({
-                key,
-                name: ad.ad_name_display,
-                total_revenue: ad.total_revenue,
-                total_spend: ad.total_spend,
-                profit: ad.profit,
-                roas: ad.roas
-            }));
-        }
-        if (!segmentationData) return [];
-        return Object.values(segmentationData).map((seg: any) => ({
-            key: seg.key,
-            name: seg.name,
-            total_revenue: seg.total_revenue,
-            total_spend: seg.total_spend,
-            profit: seg.profit,
-            roas: seg.roas
-        }));
-    }, [dashboardData, perspective, segmentationData]);
+            items = Object.entries(dashboardData.ads).map(([key, ad]: [string, any]) => {
+                const tipos: string[] = [...new Set((ad.segmentations || []).map((s: any) => getTipoFromCampaign(s.campaign_name)).filter(Boolean))] as string[];
+                return { key, name: ad.ad_name_display, total_revenue: ad.total_revenue, total_spend: ad.total_spend, profit: ad.profit, roas: ad.roas, tipos };
+            });
+        } else if (segmentationData) {
+            items = Object.values(segmentationData).map((seg: any) => {
+                const tipos: string[] = [...new Set((seg.ads || []).map((a: any) => getTipoFromCampaign(a.campaign_name)).filter(Boolean))] as string[];
+                return { key: seg.key, name: seg.name, total_revenue: seg.total_revenue, total_spend: seg.total_spend, profit: seg.profit, roas: seg.roas, tipos };
+            });
+        } else return [];
+        if (trafficTypeFilter === 'todos') return items;
+        return items.filter((i) => i.tipos?.includes(trafficTypeFilter));
+    }, [dashboardData, perspective, segmentationData, trafficTypeFilter]);
 
     const sortedMainList = useMemo(() => {
         const sorted = [...mainListItems];
@@ -443,13 +447,21 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                         >
                             Días desde Registro
                         </button>
+                        {dashboardData.trafficTypeSummary && (
+                            <button
+                                onClick={() => setActiveTab('traffic')}
+                                className={`py-4 px-1 text-sm font-medium border-b-2 ${activeTab === 'traffic' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-700 hover:text-gray-900'}`}
+                            >
+                                Tráfico Frío vs Caliente
+                            </button>
+                        )}
                     </nav>
                 </div>
 
                 {activeTab === 'general' && (
                     <div className="space-y-6">
                         <div className="bg-slate-50 border-l-4 border-slate-500 p-4 rounded-lg text-gray-900">
-                            <div className="flex justify-between items-center">
+                            <div className="flex flex-wrap justify-between items-center gap-4">
                                 <div>
                                     <h3 className="font-semibold text-gray-900">Perspectiva de Análisis</h3>
                                     <p className="text-sm text-gray-700">Cambia cómo analizas tus datos</p>
@@ -467,24 +479,61 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                     </button>
                                     <span className="text-sm font-medium text-gray-800">Segmentación → Anuncios</span>
                                 </label>
+                                {dashboardData.trafficTypeSummary && (
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-medium text-gray-800">Ver por tipo de tráfico:</span>
+                                        <select
+                                            value={trafficTypeFilter}
+                                            onChange={(e) => { setTrafficTypeFilter(e.target.value as 'todos' | 'frio' | 'caliente'); setSelectedKeys(new Set()); }}
+                                            className="text-sm border border-gray-300 rounded px-3 py-1.5 text-gray-900 bg-white"
+                                        >
+                                            <option value="todos">Todos</option>
+                                            <option value="frio">Frío (PF)</option>
+                                            <option value="caliente">Caliente (PQ)</option>
+                                        </select>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
                         {summaryForSelection && (
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div className="bg-white p-4 rounded-lg shadow text-center text-gray-900">
-                                    <h4 className="text-sm font-medium text-gray-700 uppercase">Ingresos {selectedKeys.size > 0 ? 'Seleccionados' : 'Totales'}</h4>
-                                    <p className="text-2xl font-bold text-green-600">{formatCurrency(summaryForSelection.total_revenue)}</p>
+                            <>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <div className="bg-white p-4 rounded-lg shadow text-center text-gray-900">
+                                        <h4 className="text-sm font-medium text-gray-700 uppercase">Ingresos {selectedKeys.size > 0 ? 'Seleccionados' : 'Totales'}</h4>
+                                        <p className="text-2xl font-bold text-green-600">{formatCurrency(summaryForSelection.total_revenue)}</p>
+                                    </div>
+                                    <div className="bg-white p-4 rounded-lg shadow text-center text-gray-900">
+                                        <h4 className="text-sm font-medium text-gray-700 uppercase">Gasto {selectedKeys.size > 0 ? 'Seleccionado' : 'Total'}</h4>
+                                        <p className="text-2xl font-bold text-red-600">{formatCurrency(summaryForSelection.total_spend)}</p>
+                                    </div>
+                                    <div className="bg-white p-4 rounded-lg shadow text-center text-gray-900">
+                                        <h4 className="text-sm font-medium text-gray-700 uppercase">ROAS</h4>
+                                        <p className="text-2xl font-bold text-indigo-600">{summaryForSelection.total_roas.toFixed(2)}x</p>
+                                    </div>
                                 </div>
-                                <div className="bg-white p-4 rounded-lg shadow text-center text-gray-900">
-                                    <h4 className="text-sm font-medium text-gray-700 uppercase">Gasto {selectedKeys.size > 0 ? 'Seleccionado' : 'Total'}</h4>
-                                    <p className="text-2xl font-bold text-red-600">{formatCurrency(summaryForSelection.total_spend)}</p>
-                                </div>
-                                <div className="bg-white p-4 rounded-lg shadow text-center text-gray-900">
-                                    <h4 className="text-sm font-medium text-gray-700 uppercase">ROAS</h4>
-                                    <p className="text-2xl font-bold text-indigo-600">{summaryForSelection.total_roas.toFixed(2)}x</p>
-                                </div>
-                            </div>
+                                {dashboardData.trafficTypeSummary && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                        <div className="bg-blue-50 p-4 rounded-lg shadow text-center border border-blue-100">
+                                            <h4 className="text-xs font-medium text-blue-800 uppercase">Tráfico Frío (PF)</h4>
+                                            <p className="text-lg font-bold text-blue-600">{dashboardData.trafficTypeSummary.frio.sales} ventas</p>
+                                            <p className="text-sm font-semibold text-blue-700">{formatCurrency(dashboardData.trafficTypeSummary.frio.revenue)}</p>
+                                        </div>
+                                        <div className="bg-orange-50 p-4 rounded-lg shadow text-center border border-orange-100">
+                                            <h4 className="text-xs font-medium text-orange-800 uppercase">Tráfico Caliente (PQ)</h4>
+                                            <p className="text-lg font-bold text-orange-600">{dashboardData.trafficTypeSummary.caliente.sales} ventas</p>
+                                            <p className="text-sm font-semibold text-orange-700">{formatCurrency(dashboardData.trafficTypeSummary.caliente.revenue)}</p>
+                                        </div>
+                                        {(dashboardData.trafficTypeSummary.otro.sales > 0 || dashboardData.trafficTypeSummary.otro.revenue > 0) && (
+                                            <div className="bg-gray-50 p-4 rounded-lg shadow text-center border border-gray-200">
+                                                <h4 className="text-xs font-medium text-gray-800 uppercase">Otro</h4>
+                                                <p className="text-lg font-bold text-gray-600">{dashboardData.trafficTypeSummary.otro.sales} ventas</p>
+                                                <p className="text-sm font-semibold text-gray-700">{formatCurrency(dashboardData.trafficTypeSummary.otro.revenue)}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </>
                         )}
 
                         <div className="flex flex-col lg:flex-row gap-6">
@@ -851,6 +900,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                 captationByAnuncio={dashboardData.captationByAnuncio}
                                 captationBySegmentacion={dashboardData.captationBySegmentacion}
                                 captationByPais={dashboardData.captationByPais}
+                                captationByTrafficType={dashboardData.captationByTrafficType}
                             />
                         )}
 
@@ -937,6 +987,173 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                         )}
                     </div>
                 )}
+
+                {activeTab === 'traffic' && dashboardData.trafficTypeSummary && (() => {
+                    const ts = dashboardData.trafficTypeSummary;
+                    const tsp = dashboardData.trafficTypeSpend || { frio: 0, caliente: 0, otro: 0 };
+                    const roasFrio = tsp.frio > 0 ? ts.frio.revenue / tsp.frio : 0;
+                    const roasCaliente = tsp.caliente > 0 ? ts.caliente.revenue / tsp.caliente : 0;
+                    const barData = [
+                        { tipo: 'Tráfico Frío (PF)', ventas: ts.frio.sales, ingresos: ts.frio.revenue, gasto: tsp.frio, roas: roasFrio },
+                        { tipo: 'Tráfico Caliente (PQ)', ventas: ts.caliente.sales, ingresos: ts.caliente.revenue, gasto: tsp.caliente, roas: roasCaliente },
+                        ...(ts.otro.sales > 0 || ts.otro.revenue > 0 ? [{ tipo: 'Otro', ventas: ts.otro.sales, ingresos: ts.otro.revenue, gasto: tsp.otro, roas: tsp.otro > 0 ? ts.otro.revenue / tsp.otro : 0 }] : [])
+                    ];
+                    const captationByTraffic = dashboardData.captationByTrafficType;
+                    const chartData = captationByTraffic ? (() => {
+                        const allDates = new Set<string>();
+                        if (captationByTraffic.frio) captationByTraffic.frio.forEach((r: any) => allDates.add(r.date));
+                        if (captationByTraffic.caliente) captationByTraffic.caliente.forEach((r: any) => allDates.add(r.date));
+                        if (captationByTraffic.otro) captationByTraffic.otro.forEach((r: any) => allDates.add(r.date));
+                        const byDate: Record<string, any> = {};
+                        for (const d of Array.from(allDates).sort()) {
+                            byDate[d] = { date: d, label: formatDateShort(d), frio_sales: 0, caliente_sales: 0, frio_revenue: 0, caliente_revenue: 0 };
+                        }
+                        (captationByTraffic.frio || []).forEach((r: any) => { if (byDate[r.date]) { byDate[r.date].frio_sales = r.sales; byDate[r.date].frio_revenue = r.revenue; } });
+                        (captationByTraffic.caliente || []).forEach((r: any) => { if (byDate[r.date]) { byDate[r.date].caliente_sales = r.sales; byDate[r.date].caliente_revenue = r.revenue; } });
+                        return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
+                    })() : [];
+                    const adsWithTipo = Object.entries(dashboardData.ads || {}).flatMap(([adKey, ad]: [string, any]) => {
+                        if (adKey === 'organica') return [];
+                        return (ad.segmentations || []).map((s: any) => {
+                            const c = String(s.campaign_name || '').toUpperCase();
+                            const tipo = c.includes('PQ') ? 'Caliente (PQ)' : c.includes('PF') ? 'Frío (PF)' : 'Otro';
+                            return { anuncio: ad.ad_name_display, segmentacion: s.name, tipo, ventas: s.sales, ingresos: s.revenue, gasto: s.spend_allocated || 0, roas: (s.spend_allocated || 0) > 0 ? s.revenue / (s.spend_allocated || 0) : 0 };
+                        });
+                    });
+                    return (
+                        <div className="space-y-6 text-gray-900">
+                            <h3 className="text-lg font-semibold text-indigo-800">Tráfico Frío (PF) vs Caliente (PQ)</h3>
+                            <p className="text-sm text-gray-700">Comparativa de ventas, ingresos, gasto y ROAS por tipo de tráfico. PF = tráfico frío, PQ = tráfico caliente.</p>
+                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
+                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                                    <h4 className="text-xs font-medium text-blue-800 uppercase">Frío - Ventas</h4>
+                                    <p className="text-xl font-bold text-blue-600">{ts.frio.sales}</p>
+                                </div>
+                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                                    <h4 className="text-xs font-medium text-blue-800 uppercase">Frío - Ingresos</h4>
+                                    <p className="text-lg font-bold text-blue-600">{formatCurrency(ts.frio.revenue)}</p>
+                                </div>
+                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                                    <h4 className="text-xs font-medium text-blue-800 uppercase">Frío - Gasto</h4>
+                                    <p className="text-lg font-bold text-blue-600">{formatCurrency(tsp.frio)}</p>
+                                </div>
+                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                                    <h4 className="text-xs font-medium text-blue-800 uppercase">Frío - ROAS</h4>
+                                    <p className="text-lg font-bold text-blue-600">{roasFrio.toFixed(2)}x</p>
+                                </div>
+                                <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
+                                    <h4 className="text-xs font-medium text-orange-800 uppercase">Caliente - Ventas</h4>
+                                    <p className="text-xl font-bold text-orange-600">{ts.caliente.sales}</p>
+                                </div>
+                                <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
+                                    <h4 className="text-xs font-medium text-orange-800 uppercase">Caliente - Ingresos</h4>
+                                    <p className="text-lg font-bold text-orange-600">{formatCurrency(ts.caliente.revenue)}</p>
+                                </div>
+                                <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
+                                    <h4 className="text-xs font-medium text-orange-800 uppercase">Caliente - Gasto</h4>
+                                    <p className="text-lg font-bold text-orange-600">{formatCurrency(tsp.caliente)}</p>
+                                </div>
+                                <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
+                                    <h4 className="text-xs font-medium text-orange-800 uppercase">Caliente - ROAS</h4>
+                                    <p className="text-lg font-bold text-orange-600">{roasCaliente.toFixed(2)}x</p>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-lg shadow p-6">
+                                <h4 className="font-semibold mb-4 text-gray-900">Comparativa Ventas e Ingresos</h4>
+                                <div className="h-[300px]">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={barData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                            <XAxis dataKey="tipo" tick={{ fontSize: 11 }} />
+                                            <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
+                                            <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
+                                            <Tooltip content={({ active, payload }) => {
+                                                if (!active || !payload?.length) return null;
+                                                const d = payload[0]?.payload;
+                                                return (
+                                                    <div className="bg-white p-3 rounded-lg shadow-lg border text-sm text-gray-900">
+                                                        <p className="font-semibold">{d?.tipo}</p>
+                                                        <p>Ventas: <strong>{d?.ventas}</strong></p>
+                                                        <p>Ingresos: <strong>{formatCurrency(d?.ingresos ?? 0)}</strong></p>
+                                                        <p>Gasto: <strong>{formatCurrency(d?.gasto ?? 0)}</strong></p>
+                                                        <p>ROAS: <strong>{d?.roas?.toFixed(2)}x</strong></p>
+                                                    </div>
+                                                );
+                                            }} />
+                                            <Legend />
+                                            <Bar yAxisId="left" dataKey="ventas" name="Ventas" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                                            <Bar yAxisId="right" dataKey="ingresos" name="Ingresos" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+                            {chartData.length > 0 && (
+                                <div className="bg-white rounded-lg shadow p-6">
+                                    <h4 className="font-semibold mb-4 text-gray-900">Evolución por Fecha</h4>
+                                    <div className="h-[300px]">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <ComposedChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                                <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                                                <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
+                                                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
+                                                <Tooltip content={({ active, payload }) => {
+                                                    if (!active || !payload?.length) return null;
+                                                    const d = payload[0]?.payload;
+                                                    return (
+                                                        <div className="bg-white p-3 rounded-lg shadow-lg border text-sm text-gray-900">
+                                                            <p className="font-semibold">{d?.label}</p>
+                                                            <p>Frío ventas: <strong>{d?.frio_sales}</strong></p>
+                                                            <p>Caliente ventas: <strong>{d?.caliente_sales}</strong></p>
+                                                            <p>Frío ingresos: <strong>{formatCurrency(d?.frio_revenue ?? 0)}</strong></p>
+                                                            <p>Caliente ingresos: <strong>{formatCurrency(d?.caliente_revenue ?? 0)}</strong></p>
+                                                        </div>
+                                                    );
+                                                }} />
+                                                <Legend />
+                                                <Bar yAxisId="left" dataKey="frio_sales" name="Frío ventas" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                                                <Bar yAxisId="left" dataKey="caliente_sales" name="Caliente ventas" fill="#f97316" radius={[4, 4, 0, 0]} />
+                                                <Line yAxisId="right" type="monotone" dataKey="frio_revenue" name="Frío ingresos" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
+                                                <Line yAxisId="right" type="monotone" dataKey="caliente_revenue" name="Caliente ingresos" stroke="#f97316" strokeWidth={2} dot={{ r: 3 }} />
+                                            </ComposedChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                            )}
+                            <div className="bg-white rounded-lg shadow overflow-hidden">
+                                <h4 className="font-semibold p-4 border-b bg-gray-50 text-gray-900">Desglose por Anuncio / Segmentación</h4>
+                                <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-gray-50 sticky top-0">
+                                            <tr>
+                                                <th className="px-4 py-2 text-left font-semibold text-gray-800">Anuncio</th>
+                                                <th className="px-4 py-2 text-left font-semibold text-gray-800">Segmentación</th>
+                                                <th className="px-4 py-2 text-left font-semibold text-gray-800">Tipo</th>
+                                                <th className="px-4 py-2 text-right font-semibold text-gray-800">Ventas</th>
+                                                <th className="px-4 py-2 text-right font-semibold text-gray-800">Ingresos</th>
+                                                <th className="px-4 py-2 text-right font-semibold text-gray-800">Gasto</th>
+                                                <th className="px-4 py-2 text-right font-semibold text-gray-800">ROAS</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {adsWithTipo.sort((a, b) => b.ingresos - a.ingresos).map((row, i) => (
+                                                <tr key={i} className="border-t border-gray-100 hover:bg-gray-50">
+                                                    <td className="px-4 py-2 text-gray-900">{row.anuncio}</td>
+                                                    <td className="px-4 py-2 text-gray-900">{row.segmentacion}</td>
+                                                    <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded text-xs font-medium ${row.tipo.includes('Frío') ? 'bg-blue-100 text-blue-800' : row.tipo.includes('Caliente') ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'}`}>{row.tipo}</span></td>
+                                                    <td className="px-4 py-2 text-right text-gray-900">{row.ventas}</td>
+                                                    <td className="px-4 py-2 text-right text-green-600">{formatCurrency(row.ingresos)}</td>
+                                                    <td className="px-4 py-2 text-right text-red-600">{formatCurrency(row.gasto)}</td>
+                                                    <td className="px-4 py-2 text-right text-indigo-600">{row.roas.toFixed(2)}x</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
 
                 {activeTab === 'countries' && dashboardData.countryData && (() => {
                     const cols = [

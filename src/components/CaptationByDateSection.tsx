@@ -89,10 +89,11 @@ interface CaptationByDateSectionProps {
     captationByAnuncio?: Record<string, { date: string; leads: number; sales: number; revenue: number; gasto: number; cpl: number }[]>;
     captationBySegmentacion?: Record<string, { date: string; leads: number; sales: number; revenue: number; gasto: number; cpl: number }[]>;
     captationByPais?: Record<string, { date: string; leads: number; sales: number; revenue: number; gasto: number; cpl: number }[]>;
+    captationByTrafficType?: { frio: { date: string; leads: number; sales: number; revenue: number; gasto: number; cpl: number }[]; caliente: { date: string; leads: number; sales: number; revenue: number; gasto: number; cpl: number }[]; otro: { date: string; leads: number; sales: number; revenue: number; gasto: number; cpl: number }[] };
 }
 
-export default function CaptationByDateSection({ salesByRegistrationDate: sbr, salesByRegistrationDateByCountry: byCountry, captationByAnuncio, captationBySegmentacion, captationByPais }: CaptationByDateSectionProps) {
-    const [captationFilterBy, setCaptationFilterBy] = useState<'todos' | 'anuncio' | 'segmentacion' | 'pais'>('todos');
+export default function CaptationByDateSection({ salesByRegistrationDate: sbr, salesByRegistrationDateByCountry: byCountry, captationByAnuncio, captationBySegmentacion, captationByPais, captationByTrafficType }: CaptationByDateSectionProps) {
+    const [captationFilterBy, setCaptationFilterBy] = useState<'todos' | 'anuncio' | 'segmentacion' | 'pais' | 'traffic'>('todos');
     const [captationFilterValue, setCaptationFilterValue] = useState<string>('');
     const [chartMetrics, setChartMetrics] = useState<ChartMetrics>({ leads: true, sales: true, conversion: true, revenue: true, cpl: false });
     const [modalDateRow, setModalDateRow] = useState<{ date: string; ads: any[] } | null>(null);
@@ -125,14 +126,19 @@ export default function CaptationByDateSection({ salesByRegistrationDate: sbr, s
         return {
             anuncios: Object.keys(anunciosGasto).sort((a, b) => sortByGasto(a, b, anunciosGasto)),
             segmentaciones: Object.keys(segmentacionesGasto).sort((a, b) => sortByGasto(a, b, segmentacionesGasto)),
-            paises: Object.keys(paisesGasto).sort((a, b) => sortByGasto(a, b, paisesGasto))
+            paises: Object.keys(paisesGasto).sort((a, b) => sortByGasto(a, b, paisesGasto)),
+            trafficTypes: captationByTrafficType ? ['Frío (PF)', 'Caliente (PQ)', 'Otro'] : []
         };
-    }, [sbr, byCountry]);
+    }, [sbr, byCountry, captationByTrafficType]);
 
     const captationChartData = useMemo(() => {
         if (!sbr) return [];
         if (captationFilterBy === 'todos' || !captationFilterValue) {
             return sbr.map((r) => ({ ...r, gasto: r.gasto ?? 0 }));
+        }
+        if (captationFilterBy === 'traffic' && captationByTrafficType) {
+            const key = captationFilterValue === 'Frío (PF)' ? 'frio' : captationFilterValue === 'Caliente (PQ)' ? 'caliente' : 'otro';
+            return captationByTrafficType[key] || [];
         }
         if (captationFilterBy === 'anuncio' && captationByAnuncio?.[captationFilterValue]) {
             return captationByAnuncio[captationFilterValue];
@@ -183,7 +189,7 @@ export default function CaptationByDateSection({ salesByRegistrationDate: sbr, s
                 });
         }
         return sbr.map((r) => ({ ...r, gasto: r.gasto ?? 0 }));
-    }, [sbr, byCountry, captationFilterBy, captationFilterValue, captationByAnuncio, captationBySegmentacion, captationByPais]);
+    }, [sbr, byCountry, captationFilterBy, captationFilterValue, captationByAnuncio, captationBySegmentacion, captationByPais, captationByTrafficType]);
 
     const { chartDataForRecharts, convMax, cplMax } = useMemo(() => {
         const data = captationChartData.map((r: any) => ({
@@ -224,14 +230,28 @@ export default function CaptationByDateSection({ salesByRegistrationDate: sbr, s
                     <option value="anuncio">Anuncio</option>
                     <option value="segmentacion">Segmentación</option>
                     {captationFilterOptions.paises.length > 0 && <option value="pais">País</option>}
+                    {captationFilterOptions.trafficTypes.length > 0 && <option value="traffic">Tipo de tráfico</option>}
                 </select>
                 {captationFilterBy !== 'todos' && (
-                    <CaptationFilterSelect
-                        options={captationFilterBy === 'anuncio' ? captationFilterOptions.anuncios : captationFilterBy === 'segmentacion' ? captationFilterOptions.segmentaciones : captationFilterOptions.paises}
-                        value={captationFilterValue}
-                        onChange={setCaptationFilterValue}
-                        placeholder={`Selecciona ${captationFilterBy === 'anuncio' ? 'anuncio' : captationFilterBy === 'segmentacion' ? 'segmentación' : 'país'}`}
-                    />
+                    captationFilterBy === 'traffic' ? (
+                        <select
+                            value={captationFilterValue}
+                            onChange={(e) => setCaptationFilterValue(e.target.value)}
+                            className="text-sm border border-gray-300 rounded px-3 py-1.5 text-gray-900 bg-white"
+                        >
+                            <option value="">Selecciona tipo</option>
+                            {captationFilterOptions.trafficTypes.map((t) => (
+                                <option key={t} value={t}>{t}</option>
+                            ))}
+                        </select>
+                    ) : (
+                        <CaptationFilterSelect
+                            options={captationFilterBy === 'anuncio' ? captationFilterOptions.anuncios : captationFilterBy === 'segmentacion' ? captationFilterOptions.segmentaciones : captationFilterOptions.paises}
+                            value={captationFilterValue}
+                            onChange={setCaptationFilterValue}
+                            placeholder={`Selecciona ${captationFilterBy === 'anuncio' ? 'anuncio' : captationFilterBy === 'segmentacion' ? 'segmentación' : 'país'}`}
+                        />
+                    )
                 )}
             </div>
             <div className="flex flex-wrap gap-4 mb-4">
