@@ -461,13 +461,14 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
     }, [captationChartData]);
 
     const captationYAxisDomains = useMemo(() => {
-        const convs = captationChartData
+        const data = captationChartData;
+        const convs = data
             .map((r: any) => r.leads > 0 ? (r.sales / r.leads) * 100 : 0)
             .filter((v: number) => v > 0)
             .sort((a: number, b: number) => a - b);
         const convMed = convs.length > 0 ? convs[Math.floor(convs.length / 2)] : 0;
         const convMax = Math.min(100, Math.ceil(Math.max(3, convMed * 2.5)));
-        const cpls = captationChartData
+        const cpls = data
             .map((r: any) => r.leads > 0 ? (r.gasto ?? 0) / r.leads : 0)
             .filter((v: number) => v > 0)
             .sort((a: number, b: number) => a - b);
