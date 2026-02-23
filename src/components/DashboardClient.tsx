@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getAvailableTables, processDashboardData } from '@/app/actions/dashboardActions';
 import { saveReport, getReportById } from '@/lib/localStorage';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, ChevronDown, X } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 function formatCurrency(value: number) {
@@ -46,6 +46,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
     const [countrySortBy, setCountrySortBy] = useState<string>('gasto');
     const [countrySortDir, setCountrySortDir] = useState<'asc' | 'desc'>('desc');
     const [captationView, setCaptationView] = useState<'by_date' | 'by_days'>('by_date');
+    const [modalDateRow, setModalDateRow] = useState<{ date: string; ads: any[] } | null>(null);
 
     const searchParams = useSearchParams();
 
@@ -885,6 +886,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                             <th className="px-4 py-3 text-right font-semibold text-gray-800">Compraron</th>
                                             <th className="px-4 py-3 text-right font-semibold text-gray-800">Conversión</th>
                                             <th className="px-4 py-3 text-right font-semibold text-gray-800">Ingresos</th>
+                                            <th className="px-4 py-3 text-center font-semibold text-gray-800 w-12"></th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-200">
@@ -895,11 +897,60 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                                 <td className="px-4 py-3 text-right font-semibold text-indigo-600">{row.sales}</td>
                                                 <td className="px-4 py-3 text-right">{row.leads > 0 ? ((row.sales / row.leads) * 100).toFixed(1) : 0}%</td>
                                                 <td className="px-4 py-3 text-right text-green-600">{formatCurrency(row.revenue)}</td>
+                                                <td className="px-4 py-3 text-center">
+                                                    {row.ads && row.ads.length > 0 ? (
+                                                        <button
+                                                            onClick={() => setModalDateRow({ date: row.date, ads: row.ads })}
+                                                            className="p-1.5 rounded text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                                            title="Ver anuncios"
+                                                        >
+                                                            <ChevronDown className="h-4 w-4" />
+                                                        </button>
+                                                    ) : (
+                                                        <span className="text-gray-300">—</span>
+                                                    )}
+                                                </td>
                                             </tr>
                                         ))}
                                     </tbody>
                                 </table>
                             </div>
+                            {modalDateRow && (
+                                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setModalDateRow(null)}>
+                                    <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+                                        <div className="flex items-center justify-between p-4 border-b">
+                                            <h3 className="text-lg font-semibold text-gray-900">Anuncios del {formatDateShort(modalDateRow.date)}</h3>
+                                            <button onClick={() => setModalDateRow(null)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-600">
+                                                <X className="h-5 w-5" />
+                                            </button>
+                                        </div>
+                                        <div className="overflow-auto max-h-[60vh]">
+                                            <table className="w-full text-sm">
+                                                <thead className="bg-gray-50 sticky top-0">
+                                                    <tr>
+                                                        <th className="px-4 py-2 text-left font-semibold text-gray-800">Anuncio</th>
+                                                        <th className="px-4 py-2 text-left font-semibold text-gray-800">Segmentación</th>
+                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">Registros</th>
+                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">Compraron</th>
+                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">Ingresos</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-200">
+                                                    {modalDateRow.ads.map((ad: any, i: number) => (
+                                                        <tr key={i} className="hover:bg-gray-50">
+                                                            <td className="px-4 py-2 text-gray-900">{ad.anuncio}</td>
+                                                            <td className="px-4 py-2 text-gray-700">{ad.segmentacion}</td>
+                                                            <td className="px-4 py-2 text-right text-gray-700">{ad.leads}</td>
+                                                            <td className="px-4 py-2 text-right font-semibold text-indigo-600">{ad.sales}</td>
+                                                            <td className="px-4 py-2 text-right text-green-600">{formatCurrency(ad.revenue)}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                         )}
 

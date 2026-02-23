@@ -114,10 +114,13 @@ async function getSalesByRegistrationDate(
     baseTable: string,
     salesTable: string,
     multiplyRevenue: boolean
-): Promise<{ date: string; leads: number; sales: number; revenue: number }[] | null> {
+): Promise<{ date: string; leads: number; sales: number; revenue: number; ads?: { anuncio: string; segmentacion: string; leads: number; sales: number; revenue: number }[] }[] | null> {
     const regDateCandidates = ['FECHA_REGISTRO', 'FECHA', 'FECHA_CAPTACION', 'FECHA_REGISTO', 'fecha_registro', 'created_at'];
     const regCol = await getDateColumn(baseTable, regDateCandidates);
     if (!regCol) return null;
+
+    const hasAnuncio = await columnExists(baseTable, 'ANUNCIO');
+    const hasSegmentacion = await columnExists(baseTable, 'SEGMENTACION');
 
     try {
         const revenueMultiplier = multiplyRevenue ? '* 2' : '';
@@ -134,16 +137,51 @@ async function getSalesByRegistrationDate(
             ORDER BY fecha_reg ASC
         `;
         const [rows] = await pool.query<any[]>(query);
-        return rows.map((r) => {
+        const mainData = rows.map((r) => {
             const raw = r.fecha_reg;
             const dateStr = raw instanceof Date ? raw.toISOString().slice(0, 10) : raw ? String(raw).slice(0, 10) : '';
             return {
-            date: dateStr,
-            leads: parseInt(r.total_leads, 10) || 0,
-            sales: parseInt(r.total_sales, 10) || 0,
-            revenue: parseFloat(r.total_revenue) || 0
-        };
+                date: dateStr,
+                leads: parseInt(r.total_leads, 10) || 0,
+                sales: parseInt(r.total_sales, 10) || 0,
+                revenue: parseFloat(r.total_revenue) || 0
+            };
         });
+
+        if (!hasAnuncio || !hasSegmentacion) return mainData;
+
+        const adsQuery = `
+            SELECT
+                DATE(l.\`${regCol}\`) AS fecha_reg,
+                COALESCE(l.ANUNCIO, '') AS anuncio,
+                COALESCE(l.SEGMENTACION, '') AS segmentacion,
+                COUNT(DISTINCT l.\`#\`) AS leads,
+                COUNT(DISTINCT v.cliente_id) AS sales,
+                COALESCE(SUM(CAST(REPLACE(v.monto, ',', '.') AS DECIMAL(10, 2))) ${revenueMultiplier}, 0) AS revenue
+            FROM \`${baseTable}\` AS l
+            LEFT JOIN \`${salesTable}\` AS v ON l.\`#\` = v.cliente_id
+            WHERE l.\`${regCol}\` IS NOT NULL
+            GROUP BY DATE(l.\`${regCol}\`), l.ANUNCIO, l.SEGMENTACION
+            ORDER BY fecha_reg ASC, revenue DESC
+        `;
+        const [adsRows] = await pool.query<any[]>(adsQuery);
+        const adsByDate: Record<string, { anuncio: string; segmentacion: string; leads: number; sales: number; revenue: number }[]> = {};
+        for (const r of adsRows) {
+            const raw = r.fecha_reg;
+            const dateStr = raw instanceof Date ? raw.toISOString().slice(0, 10) : raw ? String(raw).slice(0, 10) : '';
+            if (!adsByDate[dateStr]) adsByDate[dateStr] = [];
+            adsByDate[dateStr].push({
+                anuncio: cleanDisplayName(r.anuncio) || 'Sin anuncio',
+                segmentacion: cleanDisplayName(r.segmentacion) || 'Sin segmentación',
+                leads: parseInt(r.leads, 10) || 0,
+                sales: parseInt(r.sales, 10) || 0,
+                revenue: parseFloat(r.revenue) || 0
+            });
+        }
+        return mainData.map((row) => ({
+            ...row,
+            ads: adsByDate[row.date] || []
+        }));
     } catch (error) {
         console.error('Error getSalesByRegistrationDate:', error);
         return null;
