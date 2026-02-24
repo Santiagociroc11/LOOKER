@@ -188,12 +188,10 @@ async function getSalesByRegistrationDate(
                 roas
             });
         }
-        const MAX_ADS_PER_DATE = 20;
         return mainData.map((row) => {
-            const allAds = adsByDate[row.date] || [];
-            const gasto = allAds.reduce((s, a) => s + (a.gasto || 0), 0);
+            const ads = adsByDate[row.date] || [];
+            const gasto = ads.reduce((s, a) => s + (a.gasto || 0), 0);
             const cpl = row.leads > 0 ? gasto / row.leads : 0;
-            const ads = allAds.slice(0, MAX_ADS_PER_DATE);
             return {
                 ...row,
                 gasto,

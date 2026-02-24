@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useMemo, useRef } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChevronDown, X } from 'lucide-react';
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
@@ -82,66 +81,6 @@ function formatCompact(value: number) {
     return Math.round(value).toString();
 }
 
-const ROW_HEIGHT = 52;
-
-function CaptationTableBody({ captationChartData, formatDateShort, formatCurrency, onOpenModal }: {
-    captationChartData: { date: string; leads: number; sales: number; revenue: number; gasto?: number; ads?: any[] }[];
-    formatDateShort: (v: string | Date | null | undefined) => string;
-    formatCurrency: (v: number) => string;
-    onOpenModal: (date: string, ads: any[]) => void;
-}) {
-    const parentRef = useRef<HTMLDivElement>(null);
-    const rowVirtualizer = useVirtualizer({
-        count: captationChartData.length,
-        getScrollElement: () => parentRef.current,
-        estimateSize: () => ROW_HEIGHT,
-        overscan: 5
-    });
-    const virtualItems = rowVirtualizer.getVirtualItems();
-    const totalSize = rowVirtualizer.getTotalSize();
-
-    return (
-        <div ref={parentRef} className="max-h-[50vh] overflow-y-auto">
-            <div style={{ height: `${totalSize}px`, position: 'relative' }}>
-                {virtualItems.map((virtualRow) => {
-                    const row = captationChartData[virtualRow.index];
-                    return (
-                        <div
-                            key={row.date}
-                            style={{
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                width: '100%',
-                                height: `${virtualRow.size}px`,
-                                transform: `translateY(${virtualRow.start}px)`
-                            }}
-                            className="grid grid-cols-[minmax(120px,1fr)_80px_80px_80px_90px_90px_90px_48px] gap-0 px-4 py-3 text-sm border-b border-gray-100 hover:bg-gray-50 items-center"
-                        >
-                            <div className="font-medium text-gray-900 truncate">{formatDateShort(row.date)}</div>
-                            <div className="text-right text-gray-700">{row.leads}</div>
-                            <div className="text-right font-semibold text-indigo-600">{row.sales}</div>
-                            <div className="text-right">{row.leads > 0 ? ((row.sales / row.leads) * 100).toFixed(1) : 0}%</div>
-                            <div className="text-right text-red-600">{formatCurrency(row.gasto ?? 0)}</div>
-                            <div className="text-right text-orange-600">{formatCurrency(row.leads > 0 ? (row.gasto ?? 0) / row.leads : 0)}</div>
-                            <div className="text-right text-green-600">{formatCurrency(row.revenue)}</div>
-                            <div className="text-center">
-                                {row.ads && row.ads.length > 0 ? (
-                                    <button type="button" onClick={() => onOpenModal(row.date, row.ads!)} className="p-1.5 rounded text-indigo-600 hover:bg-indigo-50 transition-colors" title="Ver anuncios">
-                                        <ChevronDown className="h-4 w-4" />
-                                    </button>
-                                ) : (
-                                    <span className="text-gray-300">—</span>
-                                )}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
-}
-
 type ChartMetrics = { leads: boolean; sales: boolean; conversion: boolean; revenue: boolean; cpl: boolean };
 
 interface CaptationByDateSectionProps {
@@ -153,7 +92,7 @@ interface CaptationByDateSectionProps {
     captationByTrafficType?: { frio: { date: string; leads: number; sales: number; revenue: number; gasto: number; cpl: number }[]; caliente: { date: string; leads: number; sales: number; revenue: number; gasto: number; cpl: number }[]; otro: { date: string; leads: number; sales: number; revenue: number; gasto: number; cpl: number }[] };
 }
 
-function CaptationByDateSectionInner({ salesByRegistrationDate: sbr, salesByRegistrationDateByCountry: byCountry, captationByAnuncio, captationBySegmentacion, captationByPais, captationByTrafficType }: CaptationByDateSectionProps) {
+export default function CaptationByDateSection({ salesByRegistrationDate: sbr, salesByRegistrationDateByCountry: byCountry, captationByAnuncio, captationBySegmentacion, captationByPais, captationByTrafficType }: CaptationByDateSectionProps) {
     const [captationFilterBy, setCaptationFilterBy] = useState<'todos' | 'anuncio' | 'segmentacion' | 'pais' | 'traffic'>('todos');
     const [captationFilterValue, setCaptationFilterValue] = useState<string>('');
     const [chartMetrics, setChartMetrics] = useState<ChartMetrics>({ leads: true, sales: true, conversion: true, revenue: true, cpl: false });
@@ -194,17 +133,8 @@ function CaptationByDateSectionInner({ salesByRegistrationDate: sbr, salesByRegi
 
     const captationChartData = useMemo(() => {
         if (!sbr) return [];
-        const toLeanRow = (date: string, leads: number, sales: number, revenue: number, gasto: number, ads?: any[]) => ({
-            date,
-            leads,
-            sales,
-            revenue,
-            gasto,
-            cpl: leads > 0 ? gasto / leads : 0,
-            ads
-        });
         if (captationFilterBy === 'todos' || !captationFilterValue) {
-            return sbr.map((r) => toLeanRow(r.date, r.leads, r.sales, r.revenue, r.gasto ?? 0, r.ads));
+            return sbr.map((r) => ({ ...r, gasto: r.gasto ?? 0 }));
         }
         if (captationFilterBy === 'traffic' && captationByTrafficType) {
             const key = captationFilterValue === 'Frío (PF)' ? 'frio' : captationFilterValue === 'Caliente (PQ)' ? 'caliente' : 'otro';
@@ -228,7 +158,15 @@ function CaptationByDateSectionInner({ salesByRegistrationDate: sbr, salesByRegi
                 const sales = filtered.reduce((s, a) => s + a.sales, 0);
                 const revenue = filtered.reduce((s, a) => s + a.revenue, 0);
                 const gasto = filtered.reduce((s, a) => s + (a.gasto || 0), 0);
-                return toLeanRow(row.date, leads, sales, revenue, gasto, filtered.length > 0 ? filtered : undefined);
+                return {
+                    date: row.date,
+                    leads,
+                    sales,
+                    revenue,
+                    gasto,
+                    cpl: leads > 0 ? gasto / leads : 0,
+                    ads: filtered.length > 0 ? filtered : undefined
+                };
             });
         }
         if (captationFilterBy === 'pais' && byCountry) {
@@ -238,22 +176,25 @@ function CaptationByDateSectionInner({ salesByRegistrationDate: sbr, salesByRegi
                 .map((dateStr) => {
                     const countries = byCountry[dateStr] || [];
                     const match = countries.find((c) => c.country === captationFilterValue);
-                    if (!match) return toLeanRow(dateStr, 0, 0, 0, 0);
+                    if (!match) return { date: dateStr, leads: 0, sales: 0, revenue: 0, gasto: 0, cpl: 0 };
                     const gasto = match.gasto ?? 0;
-                    return toLeanRow(dateStr, match.leads, match.sales, match.revenue, gasto);
+                    return {
+                        date: dateStr,
+                        leads: match.leads,
+                        sales: match.sales,
+                        revenue: match.revenue,
+                        gasto,
+                        cpl: match.leads > 0 ? gasto / match.leads : 0
+                    };
                 });
         }
-        return sbr.map((r) => toLeanRow(r.date, r.leads, r.sales, r.revenue, r.gasto ?? 0, r.ads));
+        return sbr.map((r) => ({ ...r, gasto: r.gasto ?? 0 }));
     }, [sbr, byCountry, captationFilterBy, captationFilterValue, captationByAnuncio, captationBySegmentacion, captationByPais, captationByTrafficType]);
 
     const { chartDataForRecharts, convMax, cplMax } = useMemo(() => {
         const data = captationChartData.map((r: any) => ({
-            date: r.date,
+            ...r,
             label: formatDateShort(r.date),
-            leads: r.leads,
-            sales: r.sales,
-            revenue: r.revenue,
-            gasto: r.gasto ?? 0,
             conversion: r.leads > 0 ? Math.round((r.sales / r.leads) * 1000) / 10 : 0,
             cpl: r.leads > 0 ? (r.gasto ?? 0) / r.leads : 0
         }));
@@ -350,33 +291,51 @@ function CaptationByDateSectionInner({ salesByRegistrationDate: sbr, salesByRegi
                             );
                         }} />
                         <Legend />
-                        {chartMetrics.leads && <Bar yAxisId="left" dataKey="leads" name="Registros" fill="#94a3b8" radius={[4, 4, 0, 0]} isAnimationActive={false} />}
-                        {chartMetrics.sales && <Bar yAxisId="right" dataKey="sales" name="Compraron" fill="#6366f1" radius={[4, 4, 0, 0]} isAnimationActive={false} />}
-                        {chartMetrics.conversion && <Line yAxisId="right2" type="monotone" dataKey="conversion" name="Conversión %" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />}
-                        {chartMetrics.revenue && <Line yAxisId="ingresos" type="monotone" dataKey="revenue" name="Ingresos" stroke="#eab308" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="5 5" isAnimationActive={false} />}
-                        {chartMetrics.cpl && <Line yAxisId="cpl" type="monotone" dataKey="cpl" name="Costo por Lead" stroke="#f97316" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="3 3" isAnimationActive={false} />}
+                        {chartMetrics.leads && <Bar yAxisId="left" dataKey="leads" name="Registros" fill="#94a3b8" radius={[4, 4, 0, 0]} />}
+                        {chartMetrics.sales && <Bar yAxisId="right" dataKey="sales" name="Compraron" fill="#6366f1" radius={[4, 4, 0, 0]} />}
+                        {chartMetrics.conversion && <Line yAxisId="right2" type="monotone" dataKey="conversion" name="Conversión %" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />}
+                        {chartMetrics.revenue && <Line yAxisId="ingresos" type="monotone" dataKey="revenue" name="Ingresos" stroke="#eab308" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="5 5" />}
+                        {chartMetrics.cpl && <Line yAxisId="cpl" type="monotone" dataKey="cpl" name="Costo por Lead" stroke="#f97316" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="3 3" />}
                     </ComposedChart>
                 </ResponsiveContainer>
             </div>
             <div className="overflow-x-auto">
-                <div className="min-w-[700px]">
-                    <div className="grid grid-cols-[minmax(120px,1fr)_80px_80px_80px_90px_90px_90px_48px] gap-0 bg-gray-50 px-4 py-3 text-sm font-semibold text-gray-800">
-                        <div className="text-left">Fecha de Registro</div>
-                        <div className="text-right">Registros</div>
-                        <div className="text-right">Compraron</div>
-                        <div className="text-right">Conversión</div>
-                        <div className="text-right">Gasto</div>
-                        <div className="text-right">Costo/Lead</div>
-                        <div className="text-right">Ingresos</div>
-                        <div className="text-center w-12"></div>
-                    </div>
-                    <CaptationTableBody
-                        captationChartData={captationChartData}
-                        formatDateShort={formatDateShort}
-                        formatCurrency={formatCurrency}
-                        onOpenModal={(date, ads) => { setModalDateRow({ date, ads }); setModalViewBy('anuncio'); setModalSortBy('revenue'); setModalSortDir('desc'); }}
-                    />
-                </div>
+                <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th className="px-4 py-3 text-left font-semibold text-gray-800">Fecha de Registro</th>
+                            <th className="px-4 py-3 text-right font-semibold text-gray-800">Registros</th>
+                            <th className="px-4 py-3 text-right font-semibold text-gray-800">Compraron</th>
+                            <th className="px-4 py-3 text-right font-semibold text-gray-800">Conversión</th>
+                            <th className="px-4 py-3 text-right font-semibold text-gray-800">Gasto</th>
+                            <th className="px-4 py-3 text-right font-semibold text-gray-800">Costo/Lead</th>
+                            <th className="px-4 py-3 text-right font-semibold text-gray-800">Ingresos</th>
+                            <th className="px-4 py-3 text-center font-semibold text-gray-800 w-12"></th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                        {captationChartData.map((row: any) => (
+                            <tr key={row.date} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 font-medium text-gray-900">{formatDateShort(row.date)}</td>
+                                <td className="px-4 py-3 text-right text-gray-700">{row.leads}</td>
+                                <td className="px-4 py-3 text-right font-semibold text-indigo-600">{row.sales}</td>
+                                <td className="px-4 py-3 text-right">{row.leads > 0 ? ((row.sales / row.leads) * 100).toFixed(1) : 0}%</td>
+                                <td className="px-4 py-3 text-right text-red-600">{formatCurrency(row.gasto ?? 0)}</td>
+                                <td className="px-4 py-3 text-right text-orange-600">{formatCurrency(row.leads > 0 ? (row.gasto ?? 0) / row.leads : 0)}</td>
+                                <td className="px-4 py-3 text-right text-green-600">{formatCurrency(row.revenue)}</td>
+                                <td className="px-4 py-3 text-center">
+                                    {row.ads && row.ads.length > 0 ? (
+                                        <button type="button" onClick={() => { setModalDateRow({ date: row.date, ads: row.ads }); setModalViewBy('anuncio'); setModalSortBy('revenue'); setModalSortDir('desc'); }} className="p-1.5 rounded text-indigo-600 hover:bg-indigo-50 transition-colors" title="Ver anuncios">
+                                            <ChevronDown className="h-4 w-4" />
+                                        </button>
+                                    ) : (
+                                        <span className="text-gray-300">—</span>
+                                    )}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
             </div>
             {modalDateRow && (() => {
                 const grouped = (modalViewBy === 'anuncio'
@@ -472,6 +431,3 @@ function CaptationByDateSectionInner({ salesByRegistrationDate: sbr, salesByRegi
         </div>
     );
 }
-
-const CaptationByDateSection = React.memo(CaptationByDateSectionInner);
-export default CaptationByDateSection;
