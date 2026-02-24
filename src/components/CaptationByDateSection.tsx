@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useRef, useDeferredValue } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { ChevronDown, X } from 'lucide-react';
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
@@ -95,8 +95,6 @@ interface CaptationByDateSectionProps {
 export default function CaptationByDateSection({ salesByRegistrationDate: sbr, salesByRegistrationDateByCountry: byCountry, captationByAnuncio, captationBySegmentacion, captationByPais, captationByTrafficType }: CaptationByDateSectionProps) {
     const [captationFilterBy, setCaptationFilterBy] = useState<'todos' | 'anuncio' | 'segmentacion' | 'pais' | 'traffic'>('todos');
     const [captationFilterValue, setCaptationFilterValue] = useState<string>('');
-    const deferredFilterBy = useDeferredValue(captationFilterBy);
-    const deferredFilterValue = useDeferredValue(captationFilterValue);
     const [chartMetrics, setChartMetrics] = useState<ChartMetrics>({ leads: true, sales: true, conversion: true, revenue: true, cpl: false });
     const [modalDateRow, setModalDateRow] = useState<{ date: string; ads: any[] } | null>(null);
     const [modalViewBy, setModalViewBy] = useState<'anuncio' | 'segmentacion'>('anuncio');
@@ -135,36 +133,31 @@ export default function CaptationByDateSection({ salesByRegistrationDate: sbr, s
 
     const captationChartData = useMemo(() => {
         if (!sbr) return [];
-        if (deferredFilterBy === 'todos' || !deferredFilterValue) {
+        if (captationFilterBy === 'todos' || !captationFilterValue) {
             return sbr.map((r) => ({ ...r, gasto: r.gasto ?? 0 }));
         }
-        if (deferredFilterBy === 'traffic' && captationByTrafficType) {
-            const key = deferredFilterValue === 'Frío (PF)' ? 'frio' : deferredFilterValue === 'Caliente (PQ)' ? 'caliente' : 'otro';
+        if (captationFilterBy === 'traffic' && captationByTrafficType) {
+            const key = captationFilterValue === 'Frío (PF)' ? 'frio' : captationFilterValue === 'Caliente (PQ)' ? 'caliente' : 'otro';
             return captationByTrafficType[key] || [];
         }
-        if (deferredFilterBy === 'anuncio' && captationByAnuncio?.[deferredFilterValue]) {
-            return captationByAnuncio[deferredFilterValue];
+        if (captationFilterBy === 'anuncio' && captationByAnuncio?.[captationFilterValue]) {
+            return captationByAnuncio[captationFilterValue];
         }
-        if (deferredFilterBy === 'segmentacion' && captationBySegmentacion?.[deferredFilterValue]) {
-            return captationBySegmentacion[deferredFilterValue];
+        if (captationFilterBy === 'segmentacion' && captationBySegmentacion?.[captationFilterValue]) {
+            return captationBySegmentacion[captationFilterValue];
         }
-        if (deferredFilterBy === 'pais' && captationByPais?.[deferredFilterValue]) {
-            return captationByPais[deferredFilterValue];
+        if (captationFilterBy === 'pais' && captationByPais?.[captationFilterValue]) {
+            return captationByPais[captationFilterValue];
         }
-        if (deferredFilterBy === 'anuncio' || deferredFilterBy === 'segmentacion') {
-            const key = deferredFilterBy === 'anuncio' ? 'anuncio' : 'segmentacion';
-            const matchVal = deferredFilterValue;
+        if (captationFilterBy === 'anuncio' || captationFilterBy === 'segmentacion') {
             return sbr.map((row) => {
-                const ads = row.ads || [];
-                let leads = 0, sales = 0, revenue = 0, gasto = 0;
-                for (let i = 0; i < ads.length; i++) {
-                    const ad = ads[i];
-                    if ((ad as any)[key] !== matchVal) continue;
-                    leads += ad.leads;
-                    sales += ad.sales;
-                    revenue += ad.revenue;
-                    gasto += ad.gasto ?? 0;
-                }
+                const filtered = (row.ads || []).filter((ad) =>
+                    captationFilterBy === 'anuncio' ? ad.anuncio === captationFilterValue : ad.segmentacion === captationFilterValue
+                );
+                const leads = filtered.reduce((s, a) => s + a.leads, 0);
+                const sales = filtered.reduce((s, a) => s + a.sales, 0);
+                const revenue = filtered.reduce((s, a) => s + a.revenue, 0);
+                const gasto = filtered.reduce((s, a) => s + (a.gasto || 0), 0);
                 return {
                     date: row.date,
                     leads,
@@ -172,17 +165,17 @@ export default function CaptationByDateSection({ salesByRegistrationDate: sbr, s
                     revenue,
                     gasto,
                     cpl: leads > 0 ? gasto / leads : 0,
-                    ads: leads > 0 ? ads.filter((ad) => (ad as any)[key] === matchVal) : undefined
+                    ads: filtered.length > 0 ? filtered : undefined
                 };
             });
         }
-        if (deferredFilterBy === 'pais' && byCountry) {
+        if (captationFilterBy === 'pais' && byCountry) {
             const allDates = new Set([...sbr.map((r) => r.date), ...Object.keys(byCountry)]);
             return Array.from(allDates)
                 .sort()
                 .map((dateStr) => {
                     const countries = byCountry[dateStr] || [];
-                    const match = countries.find((c) => c.country === deferredFilterValue);
+                    const match = countries.find((c) => c.country === captationFilterValue);
                     if (!match) return { date: dateStr, leads: 0, sales: 0, revenue: 0, gasto: 0, cpl: 0 };
                     const gasto = match.gasto ?? 0;
                     return {
@@ -196,9 +189,7 @@ export default function CaptationByDateSection({ salesByRegistrationDate: sbr, s
                 });
         }
         return sbr.map((r) => ({ ...r, gasto: r.gasto ?? 0 }));
-    }, [sbr, byCountry, deferredFilterBy, deferredFilterValue, captationByAnuncio, captationBySegmentacion, captationByPais, captationByTrafficType]);
-
-    const isChartPending = captationFilterValue !== deferredFilterValue || captationFilterBy !== deferredFilterBy;
+    }, [sbr, byCountry, captationFilterBy, captationFilterValue, captationByAnuncio, captationBySegmentacion, captationByPais, captationByTrafficType]);
 
     const { chartDataForRecharts, convMax, cplMax } = useMemo(() => {
         const data = captationChartData.map((r: any) => ({
@@ -273,12 +264,7 @@ export default function CaptationByDateSection({ salesByRegistrationDate: sbr, s
                     </label>
                 ))}
             </div>
-            <div className="h-[400px] w-full mb-6 relative">
-                {isChartPending && (
-                    <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 rounded-lg">
-                        <span className="text-sm text-indigo-600 font-medium">Actualizando...</span>
-                    </div>
-                )}
+            <div className="h-[400px] w-full mb-6">
                 <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart key={`${captationFilterBy}-${captationFilterValue}`} data={chartDataForRecharts} margin={{ top: 20, right: 165, left: 20, bottom: 60 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
