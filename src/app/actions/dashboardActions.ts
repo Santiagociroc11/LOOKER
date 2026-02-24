@@ -1,5 +1,6 @@
 'use server';
 
+import { ObjectId } from 'mongodb';
 import pool from '@/lib/db';
 import { processSpendCSV, normalizeAdName, cleanDisplayName } from '@/lib/utils/csvProcessor';
 import { RowDataPacket } from 'mysql2';
@@ -563,8 +564,20 @@ export async function processDashboardData(formData: FormData) {
         throw new Error('CSV es requerido');
     }
 
-    // 1. Sync MySQL → MongoDB (al procesar)
-    await syncMySQLToMongo(baseTable, salesTable);
+    if (!process.env.MONGODB_URI) {
+        throw new Error('MONGODB_URI no está configurado en .env. Añade: MONGODB_URI=mongodb://user:pass@host:puerto');
+    }
+
+    try {
+        // 1. Sync MySQL → MongoDB (al procesar)
+        await syncMySQLToMongo(baseTable, salesTable);
+    } catch (syncErr: any) {
+        const msg = syncErr?.message || String(syncErr);
+        if (msg.includes('ECONNREFUSED') || msg.includes('ENOTFOUND') || msg.includes('timed out')) {
+            throw new Error(`No se pudo conectar a MongoDB. Verifica que esté corriendo y que MONGODB_URI en .env sea correcto (ej: mongodb://user:pass@host:puerto). Error: ${msg}`);
+        }
+        throw new Error(`Error sincronizando datos: ${msg}`);
+    }
 
     const csvContent = await csvFile.text();
     const spendResult = await processSpendCSV(csvContent, exchangeRate);
@@ -771,5 +784,262 @@ export async function processDashboardData(formData: FormData) {
         trafficTypeSummary,
         trafficTypeSpend,
         captationByTrafficType
+    };
+}
+
+// --- Proceso por pasos (para mostrar progreso) ---
+
+export type ProcessStep1Result = {
+    reportId: string;
+    configId: string;
+    segmentationsData: Record<string, any>;
+    spendMapping: Record<string, string>;
+    baseTable: string;
+    salesTable: string;
+    multiplyRevenue: boolean;
+    hasCountryCsv: boolean;
+};
+
+export async function processDashboardStep1(formData: FormData): Promise<ProcessStep1Result> {
+    const baseTable = formData.get('base_table') as string;
+    const salesTable = formData.get('sales_table') as string;
+    const multiplyRevenue = formData.get('multiply_revenue') === '1';
+    const exchangeRate = parseFloat((formData.get('exchange_rate') as string) || '0');
+    const csvFile = formData.get('spend_report') as File;
+    const countryCsvFile = formData.get('country_report') as File | null;
+
+    if (!baseTable || !salesTable || !csvFile?.size) {
+        throw new Error('Faltan tabla base, tabla de ventas o CSV de gastos.');
+    }
+    if (!process.env.MONGODB_URI) {
+        throw new Error('MONGODB_URI no está configurado en .env');
+    }
+
+    try {
+        await syncMySQLToMongo(baseTable, salesTable);
+    } catch (err: any) {
+        const msg = err?.message || String(err);
+        if (msg.includes('ECONNREFUSED') || msg.includes('ENOTFOUND') || msg.includes('timed out')) {
+            throw new Error(`No se pudo conectar a MongoDB: ${msg}`);
+        }
+        throw new Error(`Error sincronizando: ${msg}`);
+    }
+
+    const csvContent = await csvFile.text();
+    const spendResult = await processSpendCSV(csvContent, exchangeRate);
+    const segmentationsData = spendResult.segmentations;
+    const spendMapping = spendResult.mapping;
+
+    if (Object.keys(segmentationsData).length === 0) {
+        throw new Error('No se pudieron procesar los datos del CSV de gastos.');
+    }
+
+    const configId = `${baseTable}|${salesTable}`;
+    const reportId = await storeSpendFromCSV(csvContent, configId, exchangeRate, multiplyRevenue);
+
+    if (countryCsvFile?.size) {
+        const countryCsvContent = await countryCsvFile.text();
+        await storeCountrySpendFromCSV(countryCsvContent, reportId, configId, exchangeRate);
+    }
+
+    return {
+        reportId: reportId.toString(),
+        configId,
+        segmentationsData,
+        spendMapping,
+        baseTable,
+        salesTable,
+        multiplyRevenue,
+        hasCountryCsv: !!(countryCsvFile?.size)
+    };
+}
+
+export async function processDashboardStep2(step1: ProcessStep1Result): Promise<{
+    ads: Record<string, any>;
+    qualityData: any;
+    summary: { totalRevenueAll: number; totalSpendAll: number; totalRoasAll: number; multiply_revenue: boolean };
+}> {
+    const reportId = new ObjectId(step1.reportId);
+    let ads = await aggregateAdsFromMongo(step1.baseTable, step1.salesTable, reportId, step1.multiplyRevenue, step1.spendMapping);
+
+    const organicSalesData = await getOrganicSalesFromMongo(step1.configId, step1.multiplyRevenue);
+    if (organicSalesData?.total_sales > 0) {
+        ads = {
+            organica: {
+                ad_name_display: 'Orgánica',
+                total_revenue: Number(organicSalesData.total_revenue),
+                total_leads: 0,
+                total_sales: Number(organicSalesData.total_sales),
+                total_spend: 0,
+                roas: 0,
+                profit: Number(organicSalesData.total_revenue),
+                segmentations: [{
+                    name: 'Orgánica',
+                    campaign_name: 'Orgánica',
+                    ad_id: '',
+                    revenue: Number(organicSalesData.total_revenue),
+                    leads: 0,
+                    sales: Number(organicSalesData.total_sales),
+                    spend_allocated: 0,
+                    profit: Number(organicSalesData.total_revenue),
+                    cpl: 0,
+                    conversion_rate: 0
+                }]
+            },
+            ...ads
+        };
+    }
+
+    let totalRevenueAll = 0;
+    let totalSpendAll = 0;
+    for (const [adKey, adData] of Object.entries<any>(ads)) {
+        if (adKey !== 'organica') totalRevenueAll += adData.total_revenue;
+        totalSpendAll += adData.total_spend;
+    }
+
+    const qualityData = await getQualityDataFromMongo(step1.configId, reportId, step1.multiplyRevenue, step1.segmentationsData);
+
+    const sortedAds = Object.entries(ads).sort((a: any, b: any) => b[1].profit - a[1].profit);
+
+    return {
+        ads: Object.fromEntries(sortedAds),
+        qualityData,
+        summary: {
+            totalRevenueAll,
+            totalSpendAll,
+            totalRoasAll: totalSpendAll > 0 ? totalRevenueAll / totalSpendAll : 0,
+            multiply_revenue: step1.multiplyRevenue
+        }
+    };
+}
+
+export async function processDashboardStep3(step1: ProcessStep1Result): Promise<{
+    captationDaysData: any;
+    salesByRegistrationDate: any;
+    salesByRegistrationDateByCountry: any;
+    captationByAnuncio: Record<string, any[]>;
+    captationBySegmentacion: Record<string, any[]>;
+    captationByPais: Record<string, any[]>;
+    trafficTypeSummary: any;
+    trafficTypeSpend: any;
+    captationByTrafficType: any;
+    countryData: any;
+}> {
+    const reportId = new ObjectId(step1.reportId);
+
+    const captationDaysData = await getPurchasesByDaysSinceRegistrationFromMongo(step1.configId, step1.multiplyRevenue);
+    const salesByRegistrationDate = await getSalesByRegistrationDateFromMongo(step1.configId, reportId, step1.multiplyRevenue);
+    const trafficTypeSummary = await getTrafficTypeSummaryFromMongo(step1.configId, step1.multiplyRevenue);
+    const trafficTypeSpend = await getSpendByTrafficTypeFromMongo(reportId);
+    const captationByTrafficType = await getCaptationByTrafficTypeFromMongo(step1.configId, reportId, step1.multiplyRevenue);
+
+    let countryData: any = null;
+    let salesByRegistrationDateByCountry: any = null;
+
+    if (step1.hasCountryCsv) {
+        const { byCountry: spendByCountry, spendByDateAndCountry } = await getCountrySpendFromMongo(reportId);
+        const salesByCountry = await getSalesByCountryFromMongo(step1.configId, step1.multiplyRevenue);
+        const allCountries = new Set([...Object.keys(spendByCountry), ...(salesByCountry || []).map((r: any) => r.country)]);
+        countryData = Array.from(allCountries).map((country: string) => {
+            const gasto = spendByCountry[country] || 0;
+            const salesRow = salesByCountry?.find((r: any) => r.country === country);
+            return {
+                country,
+                gasto,
+                roas: gasto > 0 ? (salesRow?.tracked_sales ?? 0) / gasto : 0,
+                ventas_organicas: salesRow?.organic_sales ?? 0,
+                ventas_trackeadas: salesRow?.tracked_sales ?? 0
+            };
+        });
+        countryData.sort((a: any, b: any) => b.gasto - a.gasto);
+
+        const byCountryRaw = await getSalesByRegistrationDateByCountryFromMongo(step1.configId, reportId, step1.multiplyRevenue);
+        if (byCountryRaw && spendByDateAndCountry) {
+            salesByRegistrationDateByCountry = {};
+            for (const [dateStr, countries] of Object.entries(byCountryRaw)) {
+                salesByRegistrationDateByCountry[dateStr] = countries.map((c: any) => ({
+                    ...c,
+                    gasto: spendByDateAndCountry[dateStr]?.[c.country] ?? 0
+                }));
+            }
+        } else if (byCountryRaw) {
+            salesByRegistrationDateByCountry = byCountryRaw;
+        }
+    }
+
+    const captationByAnuncio: Record<string, any[]> = {};
+    const captationBySegmentacion: Record<string, any[]> = {};
+    const captationByPais: Record<string, any[]> = {};
+
+    if (salesByRegistrationDate?.length) {
+        for (const row of salesByRegistrationDate) {
+            for (const ad of row.ads || []) {
+                const anuncio = ad.anuncio || 'Sin anuncio';
+                const segmentacion = ad.segmentacion || 'Sin segmentación';
+                const adEntry = { anuncio: ad.anuncio || 'Sin anuncio', segmentacion: ad.segmentacion || 'Sin segmentación', leads: ad.leads || 0, sales: ad.sales || 0, revenue: ad.revenue || 0, gasto: ad.gasto || 0 };
+                if (!captationByAnuncio[anuncio]) captationByAnuncio[anuncio] = [];
+                if (!captationBySegmentacion[segmentacion]) captationBySegmentacion[segmentacion] = [];
+                let foundAn = captationByAnuncio[anuncio].find((x: any) => x.date === row.date);
+                let foundSeg = captationBySegmentacion[segmentacion].find((x: any) => x.date === row.date);
+                if (!foundAn) {
+                    foundAn = { date: row.date, leads: 0, sales: 0, revenue: 0, gasto: 0, cpl: 0, ads: [] };
+                    captationByAnuncio[anuncio].push(foundAn);
+                }
+                if (!foundSeg) {
+                    foundSeg = { date: row.date, leads: 0, sales: 0, revenue: 0, gasto: 0, cpl: 0, ads: [] };
+                    captationBySegmentacion[segmentacion].push(foundSeg);
+                }
+                foundAn.leads += ad.leads || 0;
+                foundAn.sales += ad.sales || 0;
+                foundAn.revenue += ad.revenue || 0;
+                foundAn.gasto += ad.gasto || 0;
+                foundAn.ads.push(adEntry);
+                foundSeg.leads += ad.leads || 0;
+                foundSeg.sales += ad.sales || 0;
+                foundSeg.revenue += ad.revenue || 0;
+                foundSeg.gasto += ad.gasto || 0;
+                foundSeg.ads.push(adEntry);
+            }
+        }
+        for (const arr of Object.values(captationByAnuncio)) {
+            arr.sort((a: any, b: any) => a.date.localeCompare(b.date));
+            for (const r of arr) r.cpl = r.leads > 0 ? r.gasto / r.leads : 0;
+        }
+        for (const arr of Object.values(captationBySegmentacion)) {
+            arr.sort((a: any, b: any) => a.date.localeCompare(b.date));
+            for (const r of arr) r.cpl = r.leads > 0 ? r.gasto / r.leads : 0;
+        }
+    }
+
+    if (salesByRegistrationDateByCountry) {
+        const allDates = new Set([...Object.keys(salesByRegistrationDateByCountry), ...(salesByRegistrationDate || []).map((r: any) => r.date)]);
+        for (const dateStr of Array.from(allDates).sort()) {
+            for (const c of salesByRegistrationDateByCountry[dateStr] || []) {
+                const country = c.country || 'Sin país';
+                if (!captationByPais[country]) captationByPais[country] = [];
+                captationByPais[country].push({
+                    date: dateStr,
+                    leads: c.leads,
+                    sales: c.sales,
+                    revenue: c.revenue,
+                    gasto: c.gasto ?? 0,
+                    cpl: c.leads > 0 ? (c.gasto ?? 0) / c.leads : 0
+                });
+            }
+        }
+        for (const arr of Object.values(captationByPais)) arr.sort((a: any, b: any) => a.date.localeCompare(b.date));
+    }
+
+    return {
+        captationDaysData,
+        salesByRegistrationDate,
+        salesByRegistrationDateByCountry,
+        captationByAnuncio,
+        captationBySegmentacion,
+        captationByPais,
+        trafficTypeSummary,
+        trafficTypeSpend,
+        captationByTrafficType,
+        countryData
     };
 }

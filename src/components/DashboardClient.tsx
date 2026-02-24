@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { getAvailableTables, processDashboardData } from '@/app/actions/dashboardActions';
+import { getAvailableTables, processDashboardStep1, processDashboardStep2, processDashboardStep3 } from '@/app/actions/dashboardActions';
 import { saveReport, getReportById } from '@/lib/localStorage';
 import { RefreshCw, ChevronDown, X } from 'lucide-react';
 import { ComposedChart, BarChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -38,6 +38,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
     const [error, setError] = useState('');
     const [dashboardData, setDashboardData] = useState<any>(null);
 
+    const [processProgress, setProcessProgress] = useState<string>('');
     const [activeTab, setActiveTab] = useState<'general' | 'quality' | 'factors' | 'countries' | 'captation' | 'traffic'>('general');
     const [trafficTypeFilter, setTrafficTypeFilter] = useState<'todos' | 'frio' | 'caliente'>('todos');
     const [perspective, setPerspective] = useState<'ads' | 'segments'>('ads');
@@ -82,7 +83,31 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
             if (multiplyRevenue) formData.append('multiply_revenue', '1');
             if (countryCsvFile) formData.append('country_report', countryCsvFile);
 
-            const result = await processDashboardData(formData);
+            setProcessProgress('Sincronizando MySQL → MongoDB...');
+            const step1 = await processDashboardStep1(formData);
+
+            setProcessProgress('Calculando anuncios y calidad...');
+            const step2 = await processDashboardStep2(step1);
+
+            setProcessProgress('Calculando captación y países...');
+            const step3 = await processDashboardStep3(step1);
+
+            const result = {
+                ads: step2.ads,
+                summary: step2.summary,
+                qualityData: step2.qualityData,
+                countryData: step3.countryData,
+                captationDaysData: step3.captationDaysData,
+                salesByRegistrationDate: step3.salesByRegistrationDate,
+                salesByRegistrationDateByCountry: step3.salesByRegistrationDateByCountry,
+                captationByAnuncio: step3.captationByAnuncio,
+                captationBySegmentacion: step3.captationBySegmentacion,
+                captationByPais: step3.captationByPais,
+                trafficTypeSummary: step3.trafficTypeSummary,
+                trafficTypeSpend: step3.trafficTypeSpend,
+                captationByTrafficType: step3.captationByTrafficType
+            };
+
             setDashboardData(result);
             saveReport(result);
             setActiveTab('general');
@@ -93,6 +118,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
             setError(err.message || 'Error desconocido procesando los datos.');
         } finally {
             setIsLoading(false);
+            setProcessProgress('');
         }
     };
 
@@ -383,6 +409,9 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                 <button type="submit" disabled={isLoading} className="bg-indigo-600 text-white font-bold py-3 px-8 rounded-md hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2">
                                     {isLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : null} Analizar Datos
                                 </button>
+                                {isLoading && processProgress && (
+                                    <p className="mt-3 text-sm text-indigo-600 font-medium">{processProgress}</p>
+                                )}
                             </div>
                             {error && <div className="mt-4 p-4 bg-red-100 text-red-700 rounded-md">{error}</div>}
                         </form>
