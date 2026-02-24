@@ -305,10 +305,14 @@ export async function getSalesByRegistrationDateFromMongo(
     const spendCol = db.collection('spend_data');
     const mult = multiplyRevenue ? 2 : 1;
 
-    const [spendDailyResult, facetResult] = await Promise.all([
+    const [spendDailyResult, spendTotalResult, facetResult] = await Promise.all([
         spendCol.aggregate([
             { $match: { report_id: reportId, is_daily: true } },
             { $group: { _id: { day: { $dateToString: { format: '%Y-%m-%d', date: '$day' } }, ad: '$ad_name_normalized', seg: '$segmentation_normalized' }, amount: { $sum: '$amount_spent' } } }
+        ]).toArray(),
+        spendCol.aggregate([
+            { $match: { report_id: reportId, is_daily: { $ne: true } } },
+            { $group: { _id: { ad: '$ad_name_normalized', seg: '$segmentation_normalized' }, amount: { $sum: '$amount_spent' } } }
         ]).toArray(),
         leadsCol.aggregate([
             { $match: { config_id: configId, fecha_registro: { $exists: true, $ne: null } } },
@@ -358,6 +362,10 @@ export async function getSalesByRegistrationDateFromMongo(
     for (const d of spendDailyResult) {
         spendByDate[`${d._id.day}|${d._id.ad}|${d._id.seg}`] = d.amount;
     }
+    const spendByAdSeg: Record<string, number> = {};
+    for (const d of spendTotalResult) {
+        spendByAdSeg[`${d._id.ad}|${d._id.seg}`] = d.amount;
+    }
 
     const mainData = (facetResult?.main || []).map((doc: { _id: string; total_leads: number; total_sales: number; total_revenue: number }) => ({
         date: doc._id,
@@ -373,8 +381,9 @@ export async function getSalesByRegistrationDateFromMongo(
         const dateStr = doc._id.fecha;
         const anuncio = doc._id.an || 'Sin anuncio';
         const segmentacion = doc._id.seg || 'Sin segmentación';
-        const gastoKey = `${dateStr}|${normalizeAdName(anuncio)}|${normalizeAdName(segmentacion)}`;
-        const gasto = spendByDate[gastoKey] ?? 0;
+        const adSegKey = `${normalizeAdName(anuncio)}|${normalizeAdName(segmentacion)}`;
+        const gastoKey = `${dateStr}|${adSegKey}`;
+        const gasto = spendByDate[gastoKey] ?? spendByAdSeg[adSegKey] ?? 0;
         const rev = doc.revenue || 0;
         const roas = gasto > 0 ? rev / gasto : 0;
         if (!adsByDate[dateStr]) adsByDate[dateStr] = [];
