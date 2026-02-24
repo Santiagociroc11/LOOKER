@@ -863,7 +863,7 @@ export async function processDashboardStep2(step1: ProcessStep1Result): Promise<
     let ads = await aggregateAdsFromMongo(step1.baseTable, step1.salesTable, reportId, step1.multiplyRevenue, step1.spendMapping);
 
     const organicSalesData = await getOrganicSalesFromMongo(step1.configId, step1.multiplyRevenue);
-    if (organicSalesData && (organicSalesData.total_sales ?? 0) > 0) {
+    if (organicSalesData?.total_sales > 0) {
         ads = {
             organica: {
                 ad_name_display: 'Orgánica',
