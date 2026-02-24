@@ -37,15 +37,6 @@ function rowToDoc(row: Record<string, unknown>, configId: string): Record<string
 
     doc.campana = String(row['CAMPAÑA'] ?? row['CAMPANA'] ?? row['campana'] ?? '').trim();
     doc.ad_id = String(row['AD_ID'] ?? row['ad_id'] ?? '').trim();
-    doc.pais = String(row['PAIS'] ?? row['PAÍS'] ?? row['COUNTRY'] ?? row['pais'] ?? row['country'] ?? 'Sin país').trim();
-
-    doc.qlead = String(row['QLEAD'] ?? row['qlead'] ?? '').trim();
-    doc.ingresos = String(row['INGRESOS'] ?? row['ingresos'] ?? '').trim();
-    doc.estudios = String(row['ESTUDIOS'] ?? row['estudios'] ?? '').trim();
-    doc.ocupacion = String(row['OCUPACION'] ?? row['ocupacion'] ?? '').trim();
-    doc.proposito = String(row['PROPOSITO'] ?? row['proposito'] ?? '').trim();
-    doc.edad_especifica = String(row['EDAD_ESPECIFICA'] ?? row['edad_especifica'] ?? '').trim();
-    doc.puntaje = row['PUNTAJE'] != null ? parseFloat(String(row['PUNTAJE'])) : 0;
 
     const regCol = REG_DATE_COLS.find((c) => row[c] != null);
     if (regCol) {
@@ -69,17 +60,15 @@ export async function syncMySQLToMongo(
     const [salesRows] = await pool.query(`SELECT * FROM \`${salesTable}\``) as [Record<string, unknown>[], unknown];
 
     const leadsDocs = (Array.isArray(baseRows) ? baseRows : []).map((r) => rowToDoc(r, configId));
-    const SALE_DATE_COLS = ['FECHA', 'FECHA_VENTA', 'fecha', 'fecha_venta', 'created_at', 'purchase_date'];
     const salesDocs = (Array.isArray(salesRows) ? salesRows : []).map((r) => {
         const clienteId = r['cliente_id'] ?? r['CLIENTE_ID'] ?? r['cliente'] ?? '';
         let monto = r['monto'] ?? r['MONTO'] ?? 0;
         if (typeof monto === 'string') monto = parseFloat(String(monto).replace(',', '.')) || 0;
-        const fechaCol = SALE_DATE_COLS.find((c) => r[c] != null);
         return {
             config_id: configId,
             cliente_id: String(clienteId),
             monto: Number(monto),
-            fecha: fechaCol ? toIsoDate(r[fechaCol]) : null,
+            fecha: toIsoDate(r['fecha'] ?? r['FECHA'] ?? r['FECHA_VENTA'] ?? r['fecha_venta'] ?? r['created_at'] ?? r['purchase_date']),
             fuente: String(r['fuente'] ?? r['FUENTE'] ?? '').toLowerCase(),
             venta_id: r['venta_id'] ?? r['id'] ?? r['ID'],
             _synced_at: new Date()

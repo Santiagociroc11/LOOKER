@@ -1,23 +1,12 @@
 'use server';
 
 import pool from '@/lib/db';
-import { processSpendCSV, normalizeAdName, cleanDisplayName } from '@/lib/utils/csvProcessor';
+import { processSpendCSV, processCountryCSV, normalizeAdName, cleanDisplayName } from '@/lib/utils/csvProcessor';
+import { buildQualityAnalysis } from '@/lib/utils/qualityAnalysis';
 import { RowDataPacket } from 'mysql2';
 import { syncMySQLToMongo } from '@/lib/mongoSync';
-import { storeSpendFromCSV, storeCountrySpendFromCSV } from '@/lib/mongoSpend';
-import {
-    aggregateAdsFromMongo,
-    getOrganicSalesFromMongo,
-    getPurchasesByDaysSinceRegistrationFromMongo,
-    getSalesByRegistrationDateFromMongo,
-    getTrafficTypeSummaryFromMongo,
-    getSpendByTrafficTypeFromMongo,
-    getSalesByCountryFromMongo,
-    getSalesByRegistrationDateByCountryFromMongo,
-    getCaptationByTrafficTypeFromMongo,
-    getCountrySpendFromMongo,
-    getQualityDataFromMongo
-} from '@/lib/mongoAggregations';
+import { storeSpendFromCSV, storeCountrySpendFromCSV, getSpendByDate } from '@/lib/mongoSpend';
+import { aggregateAdsFromMongo } from '@/lib/mongoAggregations';
 
 export async function getAvailableTables() {
     try {
@@ -585,30 +574,33 @@ export async function processDashboardData(formData: FormData) {
         await storeCountrySpendFromCSV(countryCsvContent, reportId, configId, exchangeRate);
     }
 
-    // 3. Agregación desde MongoDB (todo calculado en BD)
+    // 3. Obtener spendByDate desde MongoDB (para captation)
+    const spendByDate = await getSpendByDate(reportId);
+
+    // 4. Agregación desde MongoDB (cálculos en BD)
     let ads = await aggregateAdsFromMongo(baseTable, salesTable, reportId, multiplyRevenue, spendMapping);
 
-    const organicSalesData = await getOrganicSalesFromMongo(configId, multiplyRevenue);
+    const organicSalesData = await getOrganicSales(salesTable, multiplyRevenue);
 
     if (organicSalesData && organicSalesData.total_sales > 0) {
         ads = {
             organica: {
                 ad_name_display: 'Orgánica',
-                total_revenue: Number(organicSalesData.total_revenue),
+                total_revenue: parseFloat(organicSalesData.total_revenue),
                 total_leads: 0,
-                total_sales: Number(organicSalesData.total_sales),
+                total_sales: parseInt(organicSalesData.total_sales, 10),
                 total_spend: 0,
                 roas: 0,
-                profit: Number(organicSalesData.total_revenue),
+                profit: parseFloat(organicSalesData.total_revenue),
                 segmentations: [{
                     name: 'Orgánica',
                     campaign_name: 'Orgánica',
                     ad_id: '',
-                    revenue: Number(organicSalesData.total_revenue),
+                    revenue: parseFloat(organicSalesData.total_revenue),
                     leads: 0,
-                    sales: Number(organicSalesData.total_sales),
+                    sales: parseInt(organicSalesData.total_sales, 10),
                     spend_allocated: 0,
-                    profit: Number(organicSalesData.total_revenue),
+                    profit: parseFloat(organicSalesData.total_revenue),
                     cpl: 0,
                     conversion_rate: 0
                 }]
@@ -626,21 +618,28 @@ export async function processDashboardData(formData: FormData) {
 
     const sortedAds = Object.entries(ads).sort((a: any, b: any) => b[1].profit - a[1].profit);
 
-    const qualityData = await getQualityDataFromMongo(configId, reportId, multiplyRevenue, segmentationsData);
+    const qualityLeadData = await getQualityLeadData(baseTable, salesTable, multiplyRevenue);
+    const qualityData = qualityLeadData
+        ? buildQualityAnalysis(qualityLeadData, segmentationsData, multiplyRevenue)
+        : null;
 
-    const captationDaysData = await getPurchasesByDaysSinceRegistrationFromMongo(configId, multiplyRevenue);
-    const salesByRegistrationDate = await getSalesByRegistrationDateFromMongo(configId, reportId, multiplyRevenue);
+    const captationDaysData = await getPurchasesByDaysSinceRegistration(baseTable, salesTable, multiplyRevenue);
+    const salesByRegistrationDate = await getSalesByRegistrationDate(baseTable, salesTable, multiplyRevenue, segmentationsData, spendByDate);
 
-    const trafficTypeSummary = await getTrafficTypeSummaryFromMongo(configId, multiplyRevenue);
-    const trafficTypeSpend = await getSpendByTrafficTypeFromMongo(reportId);
-    const captationByTrafficType = await getCaptationByTrafficTypeFromMongo(configId, reportId, multiplyRevenue);
+    const trafficTypeSummary = await getTrafficTypeSummary(baseTable, salesTable, multiplyRevenue);
+    const trafficTypeSpend = getSpendByTrafficType(segmentationsData);
+    const captationByTrafficType = trafficTypeSummary
+        ? await getSalesByRegistrationDateByTrafficType(baseTable, salesTable, multiplyRevenue, segmentationsData, spendByDate)
+        : null;
 
     let countryData: { country: string; gasto: number; roas: number; ventas_organicas: number; ventas_trackeadas: number }[] | null = null;
+
     let salesByRegistrationDateByCountry: Record<string, { country: string; leads: number; sales: number; revenue: number; gasto: number }[]> | null = null;
 
     if (countryCsvFile && countryCsvFile.size > 0) {
-        const { byCountry: spendByCountry, spendByDateAndCountry } = await getCountrySpendFromMongo(reportId);
-        const salesByCountry = await getSalesByCountryFromMongo(configId, multiplyRevenue);
+        const countryCsvContent = await countryCsvFile.text();
+        const { byCountry: spendByCountry, spendByDateAndCountry } = await processCountryCSV(countryCsvContent, exchangeRate);
+        const salesByCountry = await getSalesByCountry(baseTable, salesTable, multiplyRevenue);
 
         const allCountries = new Set<string>([
             ...Object.keys(spendByCountry),
@@ -664,7 +663,7 @@ export async function processDashboardData(formData: FormData) {
 
         countryData.sort((a, b) => b.gasto - a.gasto);
 
-        const byCountryRaw = await getSalesByRegistrationDateByCountryFromMongo(configId, reportId, multiplyRevenue);
+        const byCountryRaw = await getSalesByRegistrationDateByCountry(baseTable, salesTable, multiplyRevenue);
         if (byCountryRaw && spendByDateAndCountry) {
             salesByRegistrationDateByCountry = {};
             for (const [dateStr, countries] of Object.entries(byCountryRaw)) {
