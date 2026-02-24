@@ -924,13 +924,11 @@ export async function processDashboardStep3a(step1: ProcessStep1Result): Promise
 }> {
     const reportId = new ObjectId(step1.reportId);
 
-    const [captationDaysData, salesByRegistrationDate, trafficTypeSummary, trafficTypeSpend, captationByTrafficType] = await Promise.all([
-        getPurchasesByDaysSinceRegistrationFromMongo(step1.configId, step1.multiplyRevenue),
-        getSalesByRegistrationDateFromMongo(step1.configId, reportId, step1.multiplyRevenue),
-        getTrafficTypeSummaryFromMongo(step1.configId, step1.multiplyRevenue),
-        getSpendByTrafficTypeFromMongo(reportId),
-        getCaptationByTrafficTypeFromMongo(step1.configId, reportId, step1.multiplyRevenue)
-    ]);
+    const captationDaysData = await getPurchasesByDaysSinceRegistrationFromMongo(step1.configId, step1.multiplyRevenue);
+    const salesByRegistrationDate = await getSalesByRegistrationDateFromMongo(step1.configId, reportId, step1.multiplyRevenue);
+    const trafficTypeSummary = await getTrafficTypeSummaryFromMongo(step1.configId, step1.multiplyRevenue);
+    const trafficTypeSpend = await getSpendByTrafficTypeFromMongo(reportId);
+    const captationByTrafficType = await getCaptationByTrafficTypeFromMongo(step1.configId, reportId, step1.multiplyRevenue);
 
     return {
         captationDaysData,
