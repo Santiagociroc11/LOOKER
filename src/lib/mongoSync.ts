@@ -1,6 +1,5 @@
 'use server';
 
-import type { Db } from 'mongodb';
 import pool from '@/lib/db';
 import { getMongoDb } from '@/lib/mongodb';
 import { normalizeAdName } from '@/lib/utils/csvProcessor';
@@ -97,17 +96,5 @@ export async function syncMySQLToMongo(
         await salesCol.insertMany(salesDocs);
     }
 
-    await ensureMongoIndexes(db);
-
     return { leadsCount: leadsDocs.length, salesCount: salesDocs.length };
-}
-
-async function ensureMongoIndexes(db: Db) {
-    try {
-        await db.collection('leads').createIndex({ config_id: 1, anuncio_normalized: 1, segmentacion_normalized: 1 }, { background: true });
-        await db.collection('leads').createIndex({ config_id: 1, cliente_id: 1 }, { background: true });
-        await db.collection('sales').createIndex({ config_id: 1, cliente_id: 1 }, { background: true });
-        await db.collection('spend_data').createIndex({ report_id: 1, is_daily: 1 }, { background: true });
-    } catch {
-    }
 }

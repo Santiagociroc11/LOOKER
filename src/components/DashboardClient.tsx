@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { getAvailableTables, processDashboardStep1, processDashboardStep2a, processDashboardStep2b, processDashboardStep3a, processDashboardStep3b, processDashboardStep3c } from '@/app/actions/dashboardActions';
+import { getAvailableTables, processDashboardStep1, processDashboardStep2, processDashboardStep3 } from '@/app/actions/dashboardActions';
 import { saveReport, getReportById } from '@/lib/localStorage';
 import { RefreshCw, ChevronDown, X } from 'lucide-react';
 import { ComposedChart, BarChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -86,35 +86,26 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
             setProcessProgress('Sincronizando MySQL → MongoDB...');
             const step1 = await processDashboardStep1(formData);
 
-            setProcessProgress('Calculando anuncios...');
-            const step2a = await processDashboardStep2a(step1);
+            setProcessProgress('Calculando anuncios y calidad...');
+            const step2 = await processDashboardStep2(step1);
 
-            setProcessProgress('Calculando calidad de leads...');
-            const step2b = await processDashboardStep2b(step1);
-
-            setProcessProgress('Calculando captación por fecha...');
-            const step3a = await processDashboardStep3a(step1);
-
-            setProcessProgress('Calculando por países...');
-            const step3b = await processDashboardStep3b(step1);
-
-            setProcessProgress('Finalizando...');
-            const step3c = await processDashboardStep3c(step3a, step3b);
+            setProcessProgress('Calculando captación y países...');
+            const step3 = await processDashboardStep3(step1);
 
             const result = {
-                ads: step2a.ads,
-                summary: step2a.summary,
-                qualityData: step2b.qualityData,
-                countryData: step3b.countryData,
-                captationDaysData: step3a.captationDaysData,
-                salesByRegistrationDate: step3a.salesByRegistrationDate,
-                salesByRegistrationDateByCountry: step3b.salesByRegistrationDateByCountry,
-                captationByAnuncio: step3c.captationByAnuncio,
-                captationBySegmentacion: step3c.captationBySegmentacion,
-                captationByPais: step3c.captationByPais,
-                trafficTypeSummary: step3a.trafficTypeSummary,
-                trafficTypeSpend: step3a.trafficTypeSpend,
-                captationByTrafficType: step3a.captationByTrafficType
+                ads: step2.ads,
+                summary: step2.summary,
+                qualityData: step2.qualityData,
+                countryData: step3.countryData,
+                captationDaysData: step3.captationDaysData,
+                salesByRegistrationDate: step3.salesByRegistrationDate,
+                salesByRegistrationDateByCountry: step3.salesByRegistrationDateByCountry,
+                captationByAnuncio: step3.captationByAnuncio,
+                captationBySegmentacion: step3.captationBySegmentacion,
+                captationByPais: step3.captationByPais,
+                trafficTypeSummary: step3.trafficTypeSummary,
+                trafficTypeSpend: step3.trafficTypeSpend,
+                captationByTrafficType: step3.captationByTrafficType
             };
 
             setDashboardData(result);
