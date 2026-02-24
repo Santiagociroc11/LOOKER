@@ -854,9 +854,8 @@ export async function processDashboardStep1(formData: FormData): Promise<Process
     };
 }
 
-export async function processDashboardStep2(step1: ProcessStep1Result): Promise<{
+export async function processDashboardStep2a(step1: ProcessStep1Result): Promise<{
     ads: Record<string, any>;
-    qualityData: any;
     summary: { totalRevenueAll: number; totalSpendAll: number; totalRoasAll: number; multiply_revenue: boolean };
 }> {
     const reportId = new ObjectId(step1.reportId);
@@ -897,13 +896,10 @@ export async function processDashboardStep2(step1: ProcessStep1Result): Promise<
         totalSpendAll += adData.total_spend;
     }
 
-    const qualityData = await getQualityDataFromMongo(step1.configId, reportId, step1.multiplyRevenue, step1.segmentationsData);
-
     const sortedAds = Object.entries(ads).sort((a: any, b: any) => b[1].profit - a[1].profit);
 
     return {
         ads: Object.fromEntries(sortedAds),
-        qualityData,
         summary: {
             totalRevenueAll,
             totalSpendAll,
@@ -913,17 +909,18 @@ export async function processDashboardStep2(step1: ProcessStep1Result): Promise<
     };
 }
 
-export async function processDashboardStep3(step1: ProcessStep1Result): Promise<{
+export async function processDashboardStep2b(step1: ProcessStep1Result): Promise<{ qualityData: any }> {
+    const reportId = new ObjectId(step1.reportId);
+    const qualityData = await getQualityDataFromMongo(step1.configId, reportId, step1.multiplyRevenue, step1.segmentationsData);
+    return { qualityData };
+}
+
+export async function processDashboardStep3a(step1: ProcessStep1Result): Promise<{
     captationDaysData: any;
     salesByRegistrationDate: any;
-    salesByRegistrationDateByCountry: any;
-    captationByAnuncio: Record<string, any[]>;
-    captationBySegmentacion: Record<string, any[]>;
-    captationByPais: Record<string, any[]>;
     trafficTypeSummary: any;
     trafficTypeSpend: any;
     captationByTrafficType: any;
-    countryData: any;
 }> {
     const reportId = new ObjectId(step1.reportId);
 
@@ -933,6 +930,20 @@ export async function processDashboardStep3(step1: ProcessStep1Result): Promise<
     const trafficTypeSpend = await getSpendByTrafficTypeFromMongo(reportId);
     const captationByTrafficType = await getCaptationByTrafficTypeFromMongo(step1.configId, reportId, step1.multiplyRevenue);
 
+    return {
+        captationDaysData,
+        salesByRegistrationDate,
+        trafficTypeSummary,
+        trafficTypeSpend,
+        captationByTrafficType
+    };
+}
+
+export async function processDashboardStep3b(step1: ProcessStep1Result): Promise<{
+    countryData: any;
+    salesByRegistrationDateByCountry: any;
+}> {
+    const reportId = new ObjectId(step1.reportId);
     let countryData: any = null;
     let salesByRegistrationDateByCountry: any = null;
 
@@ -967,6 +978,13 @@ export async function processDashboardStep3(step1: ProcessStep1Result): Promise<
         }
     }
 
+    return { countryData, salesByRegistrationDateByCountry };
+}
+
+function buildCaptationByAnuncioSegPais(
+    salesByRegistrationDate: any[],
+    salesByRegistrationDateByCountry: Record<string, any[]> | null
+): { captationByAnuncio: Record<string, any[]>; captationBySegmentacion: Record<string, any[]>; captationByPais: Record<string, any[]> } {
     const captationByAnuncio: Record<string, any[]> = {};
     const captationBySegmentacion: Record<string, any[]> = {};
     const captationByPais: Record<string, any[]> = {};
@@ -1030,16 +1048,12 @@ export async function processDashboardStep3(step1: ProcessStep1Result): Promise<
         for (const arr of Object.values(captationByPais)) arr.sort((a: any, b: any) => a.date.localeCompare(b.date));
     }
 
-    return {
-        captationDaysData,
-        salesByRegistrationDate,
-        salesByRegistrationDateByCountry,
-        captationByAnuncio,
-        captationBySegmentacion,
-        captationByPais,
-        trafficTypeSummary,
-        trafficTypeSpend,
-        captationByTrafficType,
-        countryData
-    };
+    return { captationByAnuncio, captationBySegmentacion, captationByPais };
+}
+
+export async function processDashboardStep3c(
+    step3a: { salesByRegistrationDate: any[] },
+    step3b: { salesByRegistrationDateByCountry: Record<string, any[]> | null }
+): Promise<{ captationByAnuncio: Record<string, any[]>; captationBySegmentacion: Record<string, any[]>; captationByPais: Record<string, any[]> }> {
+    return buildCaptationByAnuncioSegPais(step3a.salesByRegistrationDate || [], step3b.salesByRegistrationDateByCountry);
 }

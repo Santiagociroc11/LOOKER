@@ -81,7 +81,7 @@ export async function aggregateAdsFromMongo(
         }
     ];
 
-    const cursor = leadsCol.aggregate(pipeline as object[]);
+    const cursor = leadsCol.aggregate(pipeline as object[], { allowDiskUse: true });
     const revenueRows: { ad: string; seg: string; campana: string; ad_id: string; an_orig: string; seg_orig: string; leads: number; sales: number; revenue: number }[] = [];
     for await (const doc of cursor) {
         revenueRows.push({
@@ -281,7 +281,7 @@ export async function getPurchasesByDaysSinceRegistrationFromMongo(
             }
         },
         { $sort: { _id: 1 } }
-    ] as object[]);
+    ] as object[], { allowDiskUse: true });
 
     const rows: { days: number; count: number; revenue: number }[] = [];
     for await (const doc of cursor) {
@@ -346,7 +346,7 @@ export async function getSalesByRegistrationDateFromMongo(
             }
         },
         { $sort: { _id: 1 } }
-    ] as object[]);
+    ] as object[], { allowDiskUse: true });
 
     const mainData: { date: string; leads: number; sales: number; revenue: number; gasto: number; cpl: number }[] = [];
     for await (const doc of mainCursor) {
@@ -386,7 +386,7 @@ export async function getSalesByRegistrationDateFromMongo(
                 revenue: { $sum: { $ifNull: [{ $arrayElemAt: ['$s.rev', 0] }, 0] } }
             }
         }
-    ] as object[]);
+    ] as object[], { allowDiskUse: true });
 
     const adsByDate: Record<string, { anuncio: string; segmentacion: string; leads: number; sales: number; revenue: number; gasto: number; roas: number }[]> = {};
     for await (const doc of adsCursor) {
@@ -466,7 +466,7 @@ export async function getTrafficTypeSummaryFromMongo(
                 revenue: { $sum: { $ifNull: [{ $arrayElemAt: ['$s.rev', 0] }, 0] } }
             }
         }
-    ] as object[]);
+    ] as object[], { allowDiskUse: true });
 
     const result = { frio: { leads: 0, sales: 0, revenue: 0 }, caliente: { leads: 0, sales: 0, revenue: 0 }, otro: { leads: 0, sales: 0, revenue: 0 } };
     for await (const doc of cursor) {
@@ -534,7 +534,7 @@ export async function getSalesByCountryFromMongo(
                 rev: { $sum: { $multiply: ['$sales.monto', mult] } }
             }
         }
-    ] as object[]);
+    ] as object[], { allowDiskUse: true });
 
     const byCountry: Record<string, { tracked: number; organic: number }> = {};
     for await (const doc of cursor) {
@@ -601,7 +601,7 @@ export async function getSalesByRegistrationDateByCountryFromMongo(
                 revenue: { $sum: { $ifNull: [{ $arrayElemAt: ['$s.rev', 0] }, 0] } }
             }
         }
-    ] as object[]);
+    ] as object[], { allowDiskUse: true });
 
     const byDate: Record<string, { country: string; leads: number; sales: number; revenue: number; gasto: number }[]> = {};
     for await (const doc of cursor) {
@@ -695,7 +695,7 @@ export async function getCaptationByTrafficTypeFromMongo(
                 revenue: { $sum: { $ifNull: [{ $arrayElemAt: ['$s.rev', 0] }, 0] } }
             }
         }
-    ] as object[]);
+    ] as object[], { allowDiskUse: true });
 
     const byType: Record<string, Record<string, { leads: number; sales: number; revenue: number }>> = { frio: {}, caliente: {}, otro: {} };
     for await (const doc of cursor) {
@@ -819,7 +819,7 @@ export async function getQualityDataFromMongo(
                 puntaje_sum: { $sum: { $ifNull: ['$puntaje', 0] } }
             }
         }
-    ] as object[]);
+    ] as object[], { allowDiskUse: true });
 
     const rows: any[] = [];
     for await (const doc of cursor) {
