@@ -35,6 +35,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
     const [exchangeRate, setExchangeRate] = useState('0');
     const [multiplyRevenue, setMultiplyRevenue] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [isRefreshingTables, setIsRefreshingTables] = useState(false);
     const [error, setError] = useState('');
     const [dashboardData, setDashboardData] = useState<any>(null);
 
@@ -93,6 +94,18 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
             setError(err.message || 'Error desconocido procesando los datos.');
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleRefreshTables = async () => {
+        setIsRefreshingTables(true);
+        try {
+            const freshTables = await getAvailableTables();
+            setTables(freshTables);
+        } catch (err) {
+            setError('No se pudieron cargar las tablas. Revisa la conexión a la base de datos.');
+        } finally {
+            setIsRefreshingTables(false);
         }
     };
 
@@ -358,6 +371,18 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                         {tables.map((t) => <option key={t} value={t}>{t}</option>)}
                                     </select>
                                 </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleRefreshTables}
+                                    disabled={isRefreshingTables}
+                                    className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <RefreshCw className={`w-4 h-4 ${isRefreshingTables ? 'animate-spin' : ''}`} />
+                                    {isRefreshingTables ? 'Actualizando...' : 'Actualizar tablas'}
+                                </button>
+                                <span className="text-xs text-gray-500">¿No ves tu tabla? Haz clic para recargar el listado.</span>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-800 mb-2">3. Opciones</label>
