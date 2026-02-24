@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { getAvailableTables, processDashboardData } from '@/app/actions/dashboardActions';
 import { saveReport, getReportById } from '@/lib/localStorage';
 import { RefreshCw, ChevronDown, X } from 'lucide-react';
@@ -26,6 +27,421 @@ function formatCompact(value: number) {
     return Math.round(value).toString();
 }
 
+const FIELD_NAMES: Record<string, string> = {
+    qlead: 'Calidad Lead',
+    ingresos: 'Nivel de Ingresos',
+    estudios: 'Nivel de Estudios',
+    ocupacion: 'Ocupación',
+    proposito: 'Propósito',
+    edad_especifica: 'Edad Específica'
+};
+
+const SIDEBAR_ROW_HEIGHT = 40;
+
+function VirtualizedSidebarList({ sortedMainList, selectedKeys, perspective, handleMainRowClick, formatCompact }: {
+    sortedMainList: { key: string; name: string; total_revenue: number; total_spend: number; profit: number; roas: number }[];
+    selectedKeys: string[];
+    perspective: 'ads' | 'segments';
+    handleMainRowClick: (key: string, e: React.MouseEvent) => void;
+    formatCompact: (v: number) => string;
+}) {
+    const parentRef = useRef<HTMLDivElement>(null);
+    const rowVirtualizer = useVirtualizer({
+        count: sortedMainList.length,
+        getScrollElement: () => parentRef.current,
+        estimateSize: () => SIDEBAR_ROW_HEIGHT,
+        overscan: 5
+    });
+    const virtualItems = rowVirtualizer.getVirtualItems();
+    const totalSize = rowVirtualizer.getTotalSize();
+
+    return (
+        <div ref={parentRef} className="max-h-[60vh] overflow-auto">
+            <div className="grid grid-cols-[minmax(0,1fr)_60px_60px_60px_50px] gap-0 px-2 py-2 text-xs font-semibold text-gray-800 bg-gray-50 sticky top-0 z-10">
+                <div>{perspective === 'ads' ? 'Anuncio' : 'Segmentación'}</div>
+                <div className="text-right">Ingresos</div>
+                <div className="text-right">Gasto</div>
+                <div className="text-right">Utilidad</div>
+                <div className="text-right">ROAS</div>
+            </div>
+            <div style={{ height: `${totalSize}px`, position: 'relative' }}>
+                {virtualItems.map((virtualRow) => {
+                    const item = sortedMainList[virtualRow.index];
+                    return (
+                        <div
+                            key={item.key}
+                            style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                height: `${virtualRow.size}px`,
+                                transform: `translateY(${virtualRow.start}px)`
+                            }}
+                            onClick={(e) => handleMainRowClick(item.key, e)}
+                            className={`grid grid-cols-[minmax(0,1fr)_60px_60px_60px_50px] gap-0 px-2 py-2 text-xs cursor-pointer hover:bg-gray-50 items-center ${selectedKeys.includes(item.key) ? 'bg-indigo-50' : ''}`}
+                        >
+                            <div className="font-medium text-gray-900 truncate max-w-[120px]" title={item.name}>{item.name}</div>
+                            <div className="text-right text-green-600">${formatCompact(item.total_revenue)}</div>
+                            <div className="text-right text-red-600">${formatCompact(item.total_spend)}</div>
+                            <div className={`text-right font-bold ${item.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>${formatCompact(item.profit)}</div>
+                            <div className="text-right text-indigo-600">{item.roas.toFixed(1)}x</div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+const DETAILS_ROW_HEIGHT = 44;
+
+function VirtualizedDetailsTable({ details, formatCurrency }: {
+    details: { name?: string; leads?: number; sales?: number; revenue?: number; spend_allocated?: number; profit?: number; conversion_rate?: number; cpl?: number }[];
+    formatCurrency: (v: number) => string;
+}) {
+    const parentRef = useRef<HTMLDivElement>(null);
+    const rowVirtualizer = useVirtualizer({
+        count: details.length,
+        getScrollElement: () => parentRef.current,
+        estimateSize: () => DETAILS_ROW_HEIGHT,
+        overscan: 5
+    });
+    const virtualItems = rowVirtualizer.getVirtualItems();
+    const totalSize = rowVirtualizer.getTotalSize();
+
+    return (
+        <div ref={parentRef} className="overflow-x-auto max-h-[50vh] overflow-y-auto">
+            <div className="grid grid-cols-[minmax(120px,1fr)_70px_70px_70px_90px_90px_90px_70px_80px] gap-0 px-4 py-2 text-sm font-semibold text-gray-800 bg-gray-50 sticky top-0 z-10">
+                <div>Nombre</div>
+                <div className="text-right">Leads</div>
+                <div className="text-right">Ventas</div>
+                <div className="text-right">ROAS</div>
+                <div className="text-right">Ingresos</div>
+                <div className="text-right">Gasto</div>
+                <div className="text-right">Utilidad</div>
+                <div className="text-right">Conv%</div>
+                <div className="text-right">CPL</div>
+            </div>
+            <div style={{ height: `${totalSize}px`, position: 'relative' }}>
+                {virtualItems.map((virtualRow) => {
+                    const d = details[virtualRow.index];
+                    const roas = (d.spend_allocated || 0) > 0 ? (d.revenue || 0) / (d.spend_allocated || 0) : 0;
+                    return (
+                        <div
+                            key={virtualRow.index}
+                            style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                height: `${virtualRow.size}px`,
+                                transform: `translateY(${virtualRow.start}px)`
+                            }}
+                            className="grid grid-cols-[minmax(120px,1fr)_70px_70px_70px_90px_90px_90px_70px_80px] gap-0 px-4 py-2 text-sm border-t border-gray-200 items-center"
+                        >
+                            <div className="font-medium text-gray-900">{d.name}</div>
+                            <div className="text-right">{d.leads?.toLocaleString()}</div>
+                            <div className="text-right">{d.sales?.toLocaleString()}</div>
+                            <div className={`text-right font-bold ${roas >= 2 ? 'text-green-600' : roas >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>{roas.toFixed(2)}x</div>
+                            <div className="text-right text-green-600">{formatCurrency(d.revenue || 0)}</div>
+                            <div className="text-right text-red-600">{formatCurrency(d.spend_allocated || 0)}</div>
+                            <div className={`text-right font-bold ${(d.profit || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(d.profit || 0)}</div>
+                            <div className="text-right text-gray-900">{(d.conversion_rate || 0).toFixed(2)}%</div>
+                            <div className="text-right text-gray-900">{formatCurrency(d.cpl || 0)}</div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+function TrafficTab({ trafficTypeSummary, trafficTypeSpend, captationByTrafficType, ads, formatCurrency, formatDateShort }: {
+    trafficTypeSummary: { frio: { sales: number; revenue: number }; caliente: { sales: number; revenue: number }; otro: { sales: number; revenue: number } };
+    trafficTypeSpend: { frio: number; caliente: number; otro: number };
+    captationByTrafficType: { frio: { date: string; sales: number; revenue: number }[]; caliente: { date: string; sales: number; revenue: number }[]; otro?: { date: string; sales: number; revenue: number }[] } | null;
+    ads: Record<string, any>;
+    formatCurrency: (v: number) => string;
+    formatDateShort: (v: string | Date | null | undefined) => string;
+}) {
+    const { barData, totalVentas, totalIngresos, totalGasto, pctV, pctI, pctG, roasFrio, roasCaliente } = useMemo(() => {
+        const tsp = trafficTypeSpend || { frio: 0, caliente: 0, otro: 0 };
+        const totalVentas = trafficTypeSummary.frio.sales + trafficTypeSummary.caliente.sales + trafficTypeSummary.otro.sales;
+        const totalIngresos = trafficTypeSummary.frio.revenue + trafficTypeSummary.caliente.revenue + trafficTypeSummary.otro.revenue;
+        const totalGasto = tsp.frio + tsp.caliente + tsp.otro;
+        const pctV = (n: number) => totalVentas > 0 ? ((n / totalVentas) * 100).toFixed(1) : '0';
+        const pctI = (n: number) => totalIngresos > 0 ? ((n / totalIngresos) * 100).toFixed(1) : '0';
+        const pctG = (n: number) => totalGasto > 0 ? ((n / totalGasto) * 100).toFixed(1) : '0';
+        const roasFrio = tsp.frio > 0 ? trafficTypeSummary.frio.revenue / tsp.frio : 0;
+        const roasCaliente = tsp.caliente > 0 ? trafficTypeSummary.caliente.revenue / tsp.caliente : 0;
+        const barData = [
+            { tipo: 'Tráfico Frío (PF)', ventas: trafficTypeSummary.frio.sales, ingresos: trafficTypeSummary.frio.revenue, gasto: tsp.frio, roas: roasFrio, pctVentas: pctV(trafficTypeSummary.frio.sales), pctIngresos: pctI(trafficTypeSummary.frio.revenue) },
+            { tipo: 'Tráfico Caliente (PQ)', ventas: trafficTypeSummary.caliente.sales, ingresos: trafficTypeSummary.caliente.revenue, gasto: tsp.caliente, roas: roasCaliente, pctVentas: pctV(trafficTypeSummary.caliente.sales), pctIngresos: pctI(trafficTypeSummary.caliente.revenue) },
+            ...(trafficTypeSummary.otro.sales > 0 || trafficTypeSummary.otro.revenue > 0 ? [{ tipo: 'Otro', ventas: trafficTypeSummary.otro.sales, ingresos: trafficTypeSummary.otro.revenue, gasto: tsp.otro, roas: tsp.otro > 0 ? trafficTypeSummary.otro.revenue / tsp.otro : 0, pctVentas: pctV(trafficTypeSummary.otro.sales), pctIngresos: pctI(trafficTypeSummary.otro.revenue) }] : [])
+        ];
+        return { barData, totalVentas, totalIngresos, totalGasto, pctV, pctI, pctG, roasFrio, roasCaliente };
+    }, [trafficTypeSummary, trafficTypeSpend]);
+
+    const chartData = useMemo(() => {
+        const captationByTraffic = captationByTrafficType;
+        if (!captationByTraffic) return [];
+        const allDates = new Set<string>();
+        if (captationByTraffic.frio) captationByTraffic.frio.forEach((r: any) => allDates.add(r.date));
+        if (captationByTraffic.caliente) captationByTraffic.caliente.forEach((r: any) => allDates.add(r.date));
+        if (captationByTraffic.otro) captationByTraffic.otro.forEach((r: any) => allDates.add(r.date));
+        const byDate: Record<string, any> = {};
+        for (const d of Array.from(allDates).sort()) {
+            byDate[d] = { date: d, label: formatDateShort(d), frio_sales: 0, caliente_sales: 0, frio_revenue: 0, caliente_revenue: 0 };
+        }
+        (captationByTraffic.frio || []).forEach((r: any) => { if (byDate[r.date]) { byDate[r.date].frio_sales = r.sales; byDate[r.date].frio_revenue = r.revenue; } });
+        (captationByTraffic.caliente || []).forEach((r: any) => { if (byDate[r.date]) { byDate[r.date].caliente_sales = r.sales; byDate[r.date].caliente_revenue = r.revenue; } });
+        return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
+    }, [captationByTrafficType, formatDateShort]);
+
+    const adsWithTipo = useMemo(() => {
+        return Object.entries(ads || {}).flatMap(([adKey, ad]: [string, any]) => {
+            if (adKey === 'organica') return [];
+            return (ad.segmentations || []).map((s: any) => {
+                const c = String(s.campaign_name || '').toUpperCase();
+                const tipo = c.includes('PQ') ? 'Caliente (PQ)' : c.includes('PF') ? 'Frío (PF)' : 'Otro';
+                return { anuncio: ad.ad_name_display, segmentacion: s.name, tipo, ventas: s.sales, ingresos: s.revenue, gasto: s.spend_allocated || 0, roas: (s.spend_allocated || 0) > 0 ? s.revenue / (s.spend_allocated || 0) : 0 };
+            });
+        }).sort((a, b) => b.ingresos - a.ingresos);
+    }, [ads]);
+
+    const tsp = trafficTypeSpend || { frio: 0, caliente: 0, otro: 0 };
+    return (
+        <div className="space-y-6 text-gray-900">
+            <h3 className="text-lg font-semibold text-indigo-800">Tráfico Frío (PF) vs Caliente (PQ)</h3>
+            <p className="text-sm text-gray-700">Comparativa de ventas, ingresos, gasto y ROAS por tipo de tráfico. PF = tráfico frío, PQ = tráfico caliente.</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                    <h4 className="text-xs font-medium text-blue-800 uppercase">Frío - Ventas</h4>
+                    <p className="text-xl font-bold text-blue-600">{trafficTypeSummary.frio.sales} <span className="text-blue-500 text-sm font-normal">({pctV(trafficTypeSummary.frio.sales)}%)</span></p>
+                </div>
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                    <h4 className="text-xs font-medium text-blue-800 uppercase">Frío - Ingresos</h4>
+                    <p className="text-lg font-bold text-blue-600">{formatCurrency(trafficTypeSummary.frio.revenue)} <span className="text-blue-500 text-sm font-normal">({pctI(trafficTypeSummary.frio.revenue)}%)</span></p>
+                </div>
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                    <h4 className="text-xs font-medium text-blue-800 uppercase">Frío - Gasto</h4>
+                    <p className="text-lg font-bold text-blue-600">{formatCurrency(tsp.frio)} <span className="text-blue-500 text-sm font-normal">({pctG(tsp.frio)}%)</span></p>
+                </div>
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                    <h4 className="text-xs font-medium text-blue-800 uppercase">Frío - ROAS</h4>
+                    <p className="text-lg font-bold text-blue-600">{roasFrio.toFixed(2)}x</p>
+                </div>
+                <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
+                    <h4 className="text-xs font-medium text-orange-800 uppercase">Caliente - Ventas</h4>
+                    <p className="text-xl font-bold text-orange-600">{trafficTypeSummary.caliente.sales} <span className="text-orange-500 text-sm font-normal">({pctV(trafficTypeSummary.caliente.sales)}%)</span></p>
+                </div>
+                <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
+                    <h4 className="text-xs font-medium text-orange-800 uppercase">Caliente - Ingresos</h4>
+                    <p className="text-lg font-bold text-orange-600">{formatCurrency(trafficTypeSummary.caliente.revenue)} <span className="text-orange-500 text-sm font-normal">({pctI(trafficTypeSummary.caliente.revenue)}%)</span></p>
+                </div>
+                <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
+                    <h4 className="text-xs font-medium text-orange-800 uppercase">Caliente - Gasto</h4>
+                    <p className="text-lg font-bold text-orange-600">{formatCurrency(tsp.caliente)} <span className="text-orange-500 text-sm font-normal">({pctG(tsp.caliente)}%)</span></p>
+                </div>
+                <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
+                    <h4 className="text-xs font-medium text-orange-800 uppercase">Caliente - ROAS</h4>
+                    <p className="text-lg font-bold text-orange-600">{roasCaliente.toFixed(2)}x</p>
+                </div>
+            </div>
+            <div className="bg-white rounded-lg shadow p-6">
+                <h4 className="font-semibold mb-4 text-gray-900">Comparativa Ventas e Ingresos</h4>
+                <div className="h-[300px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={barData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                            <XAxis dataKey="tipo" tick={{ fontSize: 11 }} />
+                            <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
+                            <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
+                            <Tooltip content={({ active, payload }) => {
+                                if (!active || !payload?.length) return null;
+                                const d = payload[0]?.payload;
+                                return (
+                                    <div className="bg-white p-3 rounded-lg shadow-lg border text-sm text-gray-900">
+                                        <p className="font-semibold">{d?.tipo}</p>
+                                        <p>Ventas: <strong>{d?.ventas}</strong> ({d?.pctVentas}%)</p>
+                                        <p>Ingresos: <strong>{formatCurrency(d?.ingresos ?? 0)}</strong> ({d?.pctIngresos}%)</p>
+                                        <p>Gasto: <strong>{formatCurrency(d?.gasto ?? 0)}</strong></p>
+                                        <p>ROAS: <strong>{d?.roas?.toFixed(2)}x</strong></p>
+                                    </div>
+                                );
+                            }} />
+                            <Legend />
+<Bar yAxisId="left" dataKey="ventas" name="Ventas" fill="#6366f1" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                                            <Bar yAxisId="right" dataKey="ingresos" name="Ingresos" fill="#22c55e" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            </div>
+            {chartData.length > 0 && (
+                <div className="bg-white rounded-lg shadow p-6">
+                    <h4 className="font-semibold mb-4 text-gray-900">Evolución por Fecha</h4>
+                    <div className="h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <ComposedChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                                <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
+                                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
+                                <Tooltip content={({ active, payload }) => {
+                                    if (!active || !payload?.length) return null;
+                                    const d = payload[0]?.payload;
+                                    return (
+                                        <div className="bg-white p-3 rounded-lg shadow-lg border text-sm text-gray-900">
+                                            <p className="font-semibold">{d?.label}</p>
+                                            <p>Frío ventas: <strong>{d?.frio_sales}</strong></p>
+                                            <p>Caliente ventas: <strong>{d?.caliente_sales}</strong></p>
+                                            <p>Frío ingresos: <strong>{formatCurrency(d?.frio_revenue ?? 0)}</strong></p>
+                                            <p>Caliente ingresos: <strong>{formatCurrency(d?.caliente_revenue ?? 0)}</strong></p>
+                                        </div>
+                                    );
+                                }} />
+                                <Legend />
+<Bar yAxisId="left" dataKey="frio_sales" name="Frío ventas" fill="#3b82f6" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                                                <Bar yAxisId="left" dataKey="caliente_sales" name="Caliente ventas" fill="#f97316" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                                                <Line yAxisId="right" type="monotone" dataKey="frio_revenue" name="Frío ingresos" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
+                                                <Line yAxisId="right" type="monotone" dataKey="caliente_revenue" name="Caliente ingresos" stroke="#f97316" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
+                            </ComposedChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            )}
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+                <h4 className="font-semibold p-4 border-b bg-gray-50 text-gray-900">Desglose por Anuncio / Segmentación</h4>
+                <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                    <table className="w-full text-sm">
+                        <thead className="bg-gray-50 sticky top-0">
+                            <tr>
+                                <th className="px-4 py-2 text-left font-semibold text-gray-800">Anuncio</th>
+                                <th className="px-4 py-2 text-left font-semibold text-gray-800">Segmentación</th>
+                                <th className="px-4 py-2 text-left font-semibold text-gray-800">Tipo</th>
+                                <th className="px-4 py-2 text-right font-semibold text-gray-800">Ventas</th>
+                                <th className="px-4 py-2 text-right font-semibold text-gray-800">Ingresos</th>
+                                <th className="px-4 py-2 text-right font-semibold text-gray-800">Gasto</th>
+                                <th className="px-4 py-2 text-right font-semibold text-gray-800">ROAS</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {adsWithTipo.map((row, i) => (
+                                <tr key={i} className="border-t border-gray-100 hover:bg-gray-50">
+                                    <td className="px-4 py-2 text-gray-900">{row.anuncio}</td>
+                                    <td className="px-4 py-2 text-gray-900">{row.segmentacion}</td>
+                                    <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded text-xs font-medium ${row.tipo.includes('Frío') ? 'bg-blue-100 text-blue-800' : row.tipo.includes('Caliente') ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'}`}>{row.tipo}</span></td>
+                                    <td className="px-4 py-2 text-right text-gray-900">{row.ventas}</td>
+                                    <td className="px-4 py-2 text-right text-green-600">{formatCurrency(row.ingresos)}</td>
+                                    <td className="px-4 py-2 text-right text-red-600">{formatCurrency(row.gasto)}</td>
+                                    <td className="px-4 py-2 text-right text-indigo-600">{row.roas.toFixed(2)}x</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function CountriesTab({ countryData, countrySortBy, countrySortDir, setCountrySortBy, setCountrySortDir, formatCurrency }: {
+    countryData: { country: string; gasto: number; roas: number; ventas_organicas: number; ventas_trackeadas: number }[];
+    countrySortBy: string;
+    countrySortDir: 'asc' | 'desc';
+    setCountrySortBy: (v: string) => void;
+    setCountrySortDir: (v: 'asc' | 'desc' | ((p: 'asc' | 'desc') => 'asc' | 'desc')) => void;
+    formatCurrency: (v: number) => string;
+}) {
+    const cols = useMemo(() => [
+        { key: 'country', label: 'País', align: 'left' as const },
+        { key: 'gasto', label: 'Gasto', align: 'right' as const },
+        { key: 'roas', label: 'ROAS', align: 'right' as const },
+        { key: 'ventas_organicas', label: 'Ventas Orgánicas', align: 'right' as const },
+        { key: 'ventas_trackeadas', label: 'Ventas Trackeadas', align: 'right' as const },
+        { key: 'total_ventas', label: 'Total Ventas', align: 'right' as const },
+    ], []);
+
+    const { sorted, totalGasto, totalOrg, totalTrack, totalVentas, roasGeneral } = useMemo(() => {
+        const getSortVal = (row: any, k: string) => k === 'total_ventas' ? (row.ventas_organicas ?? 0) + (row.ventas_trackeadas ?? 0) : row[k];
+        const sorted = [...countryData].sort((a: any, b: any) => {
+            const va = getSortVal(a, countrySortBy);
+            const vb = getSortVal(b, countrySortBy);
+            const cmp = typeof va === 'string' ? (va ?? '').localeCompare(vb ?? '') : (Number(va) ?? 0) - (Number(vb) ?? 0);
+            return countrySortDir === 'asc' ? cmp : -cmp;
+        });
+        const totalGasto = countryData.reduce((s: number, r: any) => s + (r.gasto ?? 0), 0);
+        const totalOrg = countryData.reduce((s: number, r: any) => s + (r.ventas_organicas ?? 0), 0);
+        const totalTrack = countryData.reduce((s: number, r: any) => s + (r.ventas_trackeadas ?? 0), 0);
+        const totalVentas = totalOrg + totalTrack;
+        const roasGeneral = totalGasto > 0 ? totalTrack / totalGasto : 0;
+        return { sorted, totalGasto, totalOrg, totalTrack, totalVentas, roasGeneral };
+    }, [countryData, countrySortBy, countrySortDir]);
+
+    return (
+        <div className="space-y-6 text-gray-900">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                <div className="bg-white p-4 rounded-lg shadow text-center border-l-4 border-red-500">
+                    <h4 className="text-xs font-medium text-gray-600 uppercase">Total Gasto</h4>
+                    <p className="text-xl font-bold text-red-600 mt-1">{formatCurrency(totalGasto)}</p>
+                </div>
+                <div className="bg-white p-4 rounded-lg shadow text-center border-l-4 border-green-500">
+                    <h4 className="text-xs font-medium text-gray-600 uppercase">Ventas Orgánicas</h4>
+                    <p className="text-xl font-bold text-green-600 mt-1">{formatCurrency(totalOrg)}</p>
+                </div>
+                <div className="bg-white p-4 rounded-lg shadow text-center border-l-4 border-blue-500">
+                    <h4 className="text-xs font-medium text-gray-600 uppercase">Ventas Trackeadas</h4>
+                    <p className="text-xl font-bold text-blue-600 mt-1">{formatCurrency(totalTrack)}</p>
+                </div>
+                <div className="bg-white p-4 rounded-lg shadow text-center border-l-4 border-gray-700">
+                    <h4 className="text-xs font-medium text-gray-600 uppercase">Total Ventas</h4>
+                    <p className="text-xl font-bold text-gray-900 mt-1">{formatCurrency(totalVentas)}</p>
+                </div>
+                <div className={`bg-white p-4 rounded-lg shadow text-center border-l-4 ${roasGeneral >= 2 ? 'border-green-500' : roasGeneral >= 1 ? 'border-yellow-500' : 'border-red-500'}`}>
+                    <h4 className="text-xs font-medium text-gray-600 uppercase">ROAS General</h4>
+                    <p className={`text-xl font-bold mt-1 ${roasGeneral >= 2 ? 'text-green-600' : roasGeneral >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>{roasGeneral.toFixed(2)}x</p>
+                </div>
+            </div>
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+                <h3 className="text-lg font-semibold p-4 border-b bg-indigo-50 text-indigo-900">Vista de Países</h3>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                {cols.map(({ key, label, align }) => (
+                                    <th
+                                        key={key}
+                                        className={`px-4 py-3 font-semibold text-gray-800 cursor-pointer select-none hover:bg-gray-100 transition-colors ${align === 'right' ? 'text-right' : 'text-left'}`}
+                                        onClick={() => { if (countrySortBy === key) setCountrySortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setCountrySortBy(key); setCountrySortDir('desc'); } }}
+                                    >
+                                        <span className="inline-flex items-center gap-1">
+                                            {label}
+                                            {countrySortBy === key && <span className="text-indigo-600">{countrySortDir === 'asc' ? '↑' : '↓'}</span>}
+                                        </span>
+                                    </th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                            {sorted.map((row: any) => (
+                                <tr key={row.country} className="hover:bg-gray-50">
+                                    <td className="px-4 py-3 font-medium text-gray-900">{row.country}</td>
+                                    <td className="px-4 py-3 text-right text-red-600">{formatCurrency(row.gasto)}</td>
+                                    <td className={`px-4 py-3 text-right font-bold ${row.roas >= 2 ? 'text-green-600' : row.roas >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>{row.roas.toFixed(2)}x</td>
+                                    <td className="px-4 py-3 text-right text-green-600">{formatCurrency(row.ventas_organicas)}</td>
+                                    <td className="px-4 py-3 text-right text-blue-600">{formatCurrency(row.ventas_trackeadas)}</td>
+                                    <td className="px-4 py-3 text-right font-semibold text-gray-900">{formatCurrency((row.ventas_organicas ?? 0) + (row.ventas_trackeadas ?? 0))}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export default function DashboardClient({ initialTables }: { initialTables: string[] }) {
     const [tables, setTables] = useState<string[]>(initialTables);
     const [baseTable, setBaseTable] = useState('');
@@ -41,7 +457,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
     const [activeTab, setActiveTab] = useState<'general' | 'quality' | 'factors' | 'countries' | 'captation' | 'traffic'>('general');
     const [trafficTypeFilter, setTrafficTypeFilter] = useState<'todos' | 'frio' | 'caliente'>('todos');
     const [perspective, setPerspective] = useState<'ads' | 'segments'>('ads');
-    const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+    const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
     const [lastSelectedKey, setLastSelectedKey] = useState<string | null>(null);
     const [sortBy, setSortBy] = useState('profit');
     const [detailSortBy, setDetailSortBy] = useState('profit');
@@ -59,7 +475,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
             setDashboardData(data);
             setActiveTab('general');
             setPerspective('ads');
-            setSelectedKeys(new Set(Object.keys(data?.ads ?? {})));
+            setSelectedKeys(Object.keys(data?.ads ?? {}));
             setLastSelectedKey(null);
         }
     }, [searchParams]);
@@ -87,7 +503,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
             saveReport(result);
             setActiveTab('general');
             setPerspective('ads');
-            setSelectedKeys(new Set(Object.keys(result.ads)));
+            setSelectedKeys(Object.keys(result.ads));
             setLastSelectedKey(null);
         } catch (err: any) {
             setError(err.message || 'Error desconocido procesando los datos.');
@@ -192,8 +608,10 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
         return sorted;
     }, [mainListItems, sortBy]);
 
+    const selectedKeysStable = useMemo(() => [...selectedKeys].sort().join(','), [selectedKeys]);
+
     const selectedDetails = useMemo(() => {
-        if (!dashboardData?.ads || selectedKeys.size === 0) return null;
+        if (!dashboardData?.ads || selectedKeys.length === 0) return null;
         let totalLeads = 0, totalSales = 0, totalRevenue = 0, totalSpend = 0;
         const combinedDetails: any[] = [];
 
@@ -260,10 +678,10 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
             totalSpend,
             details
         };
-    }, [dashboardData, segmentationData, perspective, selectedKeys, detailSortBy]);
+    }, [dashboardData, segmentationData, perspective, selectedKeysStable, detailSortBy]);
 
     const summaryForSelection = useMemo(() => {
-        if (selectedKeys.size === 0 && dashboardData?.summary) {
+        if (selectedKeys.length === 0 && dashboardData?.summary) {
             return {
                 total_revenue: dashboardData.summary.totalRevenueAll,
                 total_spend: dashboardData.summary.totalSpendAll,
@@ -276,9 +694,9 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
             total_spend: selectedDetails.totalSpend,
             total_roas: selectedDetails.totalSpend > 0 ? selectedDetails.totalRevenue / selectedDetails.totalSpend : 0
         };
-    }, [selectedKeys, selectedDetails, dashboardData]);
+    }, [selectedKeysStable, selectedDetails, dashboardData]);
 
-    const handleMainRowClick = (key: string, e: React.MouseEvent) => {
+    const handleMainRowClick = useCallback((key: string, e: React.MouseEvent) => {
         const currentArray = sortedMainList;
         const itemKey = key;
 
@@ -286,19 +704,41 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
             const lastIdx = currentArray.findIndex((i) => i.key === lastSelectedKey);
             const currIdx = currentArray.findIndex((i) => i.key === itemKey);
             const [start, end] = [Math.min(lastIdx, currIdx), Math.max(lastIdx, currIdx)];
-            const newSet = new Set<string>();
-            for (let i = start; i <= end; i++) newSet.add(currentArray[i].key);
-            setSelectedKeys(newSet);
+            const newKeys: string[] = [];
+            for (let i = start; i <= end; i++) newKeys.push(currentArray[i].key);
+            setSelectedKeys(newKeys);
         } else if (e.ctrlKey || e.metaKey) {
-            const newSet = new Set(selectedKeys);
-            if (newSet.has(itemKey)) newSet.delete(itemKey);
-            else newSet.add(itemKey);
-            setSelectedKeys(newSet);
+            setSelectedKeys((prev) => {
+                if (prev.includes(itemKey)) return prev.filter((k) => k !== itemKey);
+                return [...prev, itemKey];
+            });
         } else {
-            setSelectedKeys(new Set([itemKey]));
+            setSelectedKeys([itemKey]);
         }
         setLastSelectedKey(itemKey);
-    };
+    }, [sortedMainList, lastSelectedKey]);
+
+    const captationDaysChartData = useMemo(() => {
+        const data = dashboardData?.captationDaysData;
+        if (!data?.length) return [];
+        return data.map((r: { days: number; count: number; revenue: number }) => ({
+            days: r.days,
+            dia: `Día ${r.days}`,
+            count: r.count,
+            revenue: r.revenue
+        }));
+    }, [dashboardData?.captationDaysData]);
+
+    const captationDaysSummary = useMemo(() => {
+        const data = dashboardData?.captationDaysData as { days: number; count: number; revenue: number }[] | undefined;
+        if (!data?.length) return null;
+        const totalCount = data.reduce((s, r) => s + r.count, 0);
+        const totalRevenue = data.reduce((s, r) => s + r.revenue, 0);
+        const by7 = data.filter((r) => r.days <= 7).reduce((s, r) => ({ count: s.count + r.count, revenue: s.revenue + r.revenue }), { count: 0, revenue: 0 });
+        const by14 = data.filter((r) => r.days <= 14).reduce((s, r) => ({ count: s.count + r.count, revenue: s.revenue + r.revenue }), { count: 0, revenue: 0 });
+        const by30 = data.filter((r) => r.days <= 30).reduce((s, r) => ({ count: s.count + r.count, revenue: s.revenue + r.revenue }), { count: 0, revenue: 0 });
+        return { totalCount, totalRevenue, by7, by14, by30 };
+    }, [dashboardData?.captationDaysData]);
 
     const qualityGroups = useMemo(() => {
         if (!dashboardData?.qualityData?.segments) return { estudios: {}, ingresos: {}, ocupacion: {}, edad_especifica: {} };
@@ -321,15 +761,6 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
         }
         return groups;
     }, [dashboardData?.qualityData]);
-
-    const fieldNames: Record<string, string> = {
-        qlead: 'Calidad Lead',
-        ingresos: 'Nivel de Ingresos',
-        estudios: 'Nivel de Estudios',
-        ocupacion: 'Ocupación',
-        proposito: 'Propósito',
-        edad_especifica: 'Edad Específica'
-    };
 
     if (!dashboardData) {
         return (
@@ -472,7 +903,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                         type="button"
                                         role="switch"
                                         aria-checked={perspective === 'segments'}
-                                        onClick={() => { setPerspective(p => p === 'segments' ? 'ads' : 'segments'); setSelectedKeys(new Set()); }}
+                                        onClick={() => { setPerspective(p => p === 'segments' ? 'ads' : 'segments'); setSelectedKeys([]); }}
                                         className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${perspective === 'segments' ? 'bg-indigo-600' : 'bg-gray-200'}`}
                                     >
                                         <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform ${perspective === 'segments' ? 'translate-x-6' : 'translate-x-0.5'}`} />
@@ -484,7 +915,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                         <span className="text-sm font-medium text-gray-800">Ver por tipo de tráfico:</span>
                                         <select
                                             value={trafficTypeFilter}
-                                            onChange={(e) => { setTrafficTypeFilter(e.target.value as 'todos' | 'frio' | 'caliente'); setSelectedKeys(new Set()); }}
+                                            onChange={(e) => { setTrafficTypeFilter(e.target.value as 'todos' | 'frio' | 'caliente'); setSelectedKeys([]); }}
                                             className="text-sm border border-gray-300 rounded px-3 py-1.5 text-gray-900 bg-white"
                                         >
                                             <option value="todos">Todos</option>
@@ -500,11 +931,11 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                             <>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                     <div className="bg-white p-4 rounded-lg shadow text-center text-gray-900">
-                                        <h4 className="text-sm font-medium text-gray-700 uppercase">Ingresos {selectedKeys.size > 0 ? 'Seleccionados' : 'Totales'}</h4>
+                                        <h4 className="text-sm font-medium text-gray-700 uppercase">Ingresos {selectedKeys.length > 0 ? 'Seleccionados' : 'Totales'}</h4>
                                         <p className="text-2xl font-bold text-green-600">{formatCurrency(summaryForSelection.total_revenue)}</p>
                                     </div>
                                     <div className="bg-white p-4 rounded-lg shadow text-center text-gray-900">
-                                        <h4 className="text-sm font-medium text-gray-700 uppercase">Gasto {selectedKeys.size > 0 ? 'Seleccionado' : 'Total'}</h4>
+                                        <h4 className="text-sm font-medium text-gray-700 uppercase">Gasto {selectedKeys.length > 0 ? 'Seleccionado' : 'Total'}</h4>
                                         <p className="text-2xl font-bold text-red-600">{formatCurrency(summaryForSelection.total_spend)}</p>
                                     </div>
                                     <div className="bg-white p-4 rounded-lg shadow text-center text-gray-900">
@@ -548,8 +979,8 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                 <div className="flex justify-between items-center mb-3">
                                     <h2 className="font-bold text-gray-900">{perspective === 'ads' ? 'Análisis por Anuncio' : 'Análisis por Segmentación'}</h2>
                                     <div className="flex gap-2">
-                                        <button type="button" onClick={() => setSelectedKeys(new Set(sortedMainList.map((i) => i.key)))} className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-800 py-1 px-2 rounded font-medium">Todos</button>
-                                        <button type="button" onClick={() => setSelectedKeys(new Set())} className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-800 py-1 px-2 rounded font-medium">Ninguno</button>
+                                        <button type="button" onClick={() => setSelectedKeys(sortedMainList.map((i) => i.key))} className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-800 py-1 px-2 rounded font-medium">Todos</button>
+                                        <button type="button" onClick={() => setSelectedKeys([])} className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-800 py-1 px-2 rounded font-medium">Ninguno</button>
                                     </div>
                                 </div>
                                 <div className="mb-2">
@@ -562,45 +993,24 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                         <option value="name">Nombre</option>
                                     </select>
                                 </div>
-                                <div className="max-h-[60vh] overflow-auto">
-                                    <table className="w-full text-xs text-gray-900">
-                                        <thead className="bg-gray-50 sticky top-0">
-                                            <tr>
-                                                <th className="px-2 py-2 text-left font-semibold text-gray-800">{perspective === 'ads' ? 'Anuncio' : 'Segmentación'}</th>
-                                                <th className="px-1 py-2 text-right font-semibold text-gray-800">Ingresos</th>
-                                                <th className="px-1 py-2 text-right font-semibold text-gray-800">Gasto</th>
-                                                <th className="px-1 py-2 text-right font-semibold text-gray-800">Utilidad</th>
-                                                <th className="px-1 py-2 text-right font-semibold text-gray-800">ROAS</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {sortedMainList.map((item) => (
-                                                <tr
-                                                    key={item.key}
-                                                    onClick={(e) => handleMainRowClick(item.key, e)}
-                                                    className={`cursor-pointer hover:bg-gray-50 ${selectedKeys.has(item.key) ? 'bg-indigo-50' : ''}`}
-                                                >
-                                                    <td className="px-2 py-2 font-medium text-gray-900 truncate max-w-[120px]" title={item.name}>{item.name}</td>
-                                                    <td className="px-1 py-2 text-right text-green-600">${formatCompact(item.total_revenue)}</td>
-                                                    <td className="px-1 py-2 text-right text-red-600">${formatCompact(item.total_spend)}</td>
-                                                    <td className={`px-1 py-2 text-right font-bold ${item.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>${formatCompact(item.profit)}</td>
-                                                    <td className="px-1 py-2 text-right text-indigo-600">{item.roas.toFixed(1)}x</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                <VirtualizedSidebarList
+                                    sortedMainList={sortedMainList}
+                                    selectedKeys={selectedKeys}
+                                    perspective={perspective}
+                                    handleMainRowClick={handleMainRowClick}
+                                    formatCompact={formatCompact}
+                                />
                             </aside>
 
                             <main className="lg:w-2/3 bg-white rounded-lg shadow p-6 text-gray-900">
-                                {selectedKeys.size === 0 ? (
+                                {selectedKeys.length === 0 ? (
                                     <div className="text-center py-12 text-gray-700">
                                         <p className="text-xl font-semibold text-gray-800">Selecciona uno o más {perspective === 'ads' ? 'anuncios' : 'segmentaciones'}</p>
                                         <p className="mt-2 text-gray-600">Los detalles aparecerán aquí.</p>
                                     </div>
                                 ) : selectedDetails ? (
                                     <>
-                                        <h2 className="text-xl font-bold text-gray-900 mb-4">Resumen de la Selección ({selectedKeys.size} {perspective === 'ads' ? 'anuncios' : 'segmentaciones'})</h2>
+                                        <h2 className="text-xl font-bold text-gray-900 mb-4">Resumen de la Selección ({selectedKeys.length} {perspective === 'ads' ? 'anuncios' : 'segmentaciones'})</h2>
                                         <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
                                             <div className="p-4 bg-gray-50 rounded text-center">
                                                 <h4 className="text-xs font-medium text-gray-700 uppercase">Leads</h4>
@@ -638,41 +1048,10 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                                 <option value="name">Nombre</option>
                                             </select>
                                         </div>
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-sm text-gray-900">
-                                                <thead className="bg-gray-50">
-                                                    <tr>
-                                                        <th className="px-4 py-2 text-left font-semibold text-gray-800">Nombre</th>
-                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">Leads</th>
-                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">Ventas</th>
-                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">ROAS</th>
-                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">Ingresos</th>
-                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">Gasto</th>
-                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">Utilidad</th>
-                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">Conv%</th>
-                                                        <th className="px-4 py-2 text-right font-semibold text-gray-800">CPL</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {selectedDetails.details.map((d: any, i: number) => {
-                                                        const roas = (d.spend_allocated || 0) > 0 ? (d.revenue || 0) / (d.spend_allocated || 0) : 0;
-                                                        return (
-                                                            <tr key={i} className="border-t border-gray-200">
-                                                                <td className="px-4 py-2 font-medium text-gray-900">{d.name}</td>
-                                                                <td className="px-4 py-2 text-right">{d.leads?.toLocaleString()}</td>
-                                                                <td className="px-4 py-2 text-right">{d.sales?.toLocaleString()}</td>
-                                                                <td className={`px-4 py-2 text-right font-bold ${roas >= 2 ? 'text-green-600' : roas >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>{roas.toFixed(2)}x</td>
-                                                                <td className="px-4 py-2 text-right text-green-600">{formatCurrency(d.revenue || 0)}</td>
-                                                                <td className="px-4 py-2 text-right text-red-600">{formatCurrency(d.spend_allocated || 0)}</td>
-                                                                <td className={`px-4 py-2 text-right font-bold ${(d.profit || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(d.profit || 0)}</td>
-                                                                <td className="px-4 py-2 text-right text-gray-900">{(d.conversion_rate || 0).toFixed(2)}%</td>
-                                                                <td className="px-4 py-2 text-right text-gray-900">{formatCurrency(d.cpl || 0)}</td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
-                                        </div>
+                                        <VirtualizedDetailsTable
+                                            details={selectedDetails.details}
+                                            formatCurrency={formatCurrency}
+                                        />
                                     </>
                                 ) : null}
                             </main>
@@ -779,7 +1158,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                     if (!items || Object.keys(items).length === 0) return null;
                                     return (
                                         <div key={field} className="mb-4">
-                                            <h5 className="font-medium text-green-700 mb-2">{fieldNames[field]}</h5>
+                                            <h5 className="font-medium text-green-700 mb-2">{FIELD_NAMES[field]}</h5>
                                             <div className="space-y-2">
                                                 {Object.entries(items).map(([value, stats]: [string, any]) => (
                                                     <div key={value} className="bg-white p-3 rounded text-sm border border-gray-200">
@@ -820,7 +1199,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                     if (!items || Object.keys(items).length === 0) return null;
                                     return (
                                         <div key={field} className="mb-4">
-                                            <h5 className="font-medium text-red-700 mb-2">{fieldNames[field]}</h5>
+                                            <h5 className="font-medium text-red-700 mb-2">{FIELD_NAMES[field]}</h5>
                                             <div className="space-y-2">
                                                 {Object.entries(items).map(([value, stats]: [string, any]) => (
                                                     <div key={value} className="bg-white p-3 rounded text-sm border">
@@ -911,7 +1290,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                             />
                         )}
 
-                        {((captationView === 'by_days' && dashboardData.captationDaysData?.length > 0) || (dashboardData.captationDaysData?.length > 0 && !dashboardData.salesByRegistrationDate?.length)) && (
+                        {((captationView === 'by_days' && dashboardData.captationDaysData?.length > 0) || (dashboardData.captationDaysData?.length > 0 && !dashboardData.salesByRegistrationDate?.length)) && captationDaysChartData.length > 0 && captationDaysSummary && (
                         <div className="bg-white rounded-lg shadow p-6">
                             <h3 className="text-lg font-semibold mb-2 text-indigo-800">Compras vs Días desde Registro</h3>
                             <p className="text-sm text-gray-700 mb-6">
@@ -919,7 +1298,7 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                             </p>
                             <div className="h-[400px] w-full">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={dashboardData.captationDaysData.map((r: any) => ({ ...r, dia: `Día ${r.days}` }))} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                                    <BarChart data={captationDaysChartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                                         <XAxis dataKey="dia" tick={{ fontSize: 11 }} angle={-45} textAnchor="end" height={80} />
                                         <YAxis tick={{ fontSize: 11 }} label={{ value: 'Compras', angle: -90, position: 'insideLeft' }} />
@@ -935,45 +1314,35 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                                             );
                                         }} />
                                         <Legend />
-                                        <Bar dataKey="count" name="Compras" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                                        <Bar dataKey="count" name="Compras" fill="#6366f1" radius={[4, 4, 0, 0]} isAnimationActive={false} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
-                            {(() => {
-                                const data = dashboardData.captationDaysData as { days: number; count: number; revenue: number }[];
-                                const totalCount = data.reduce((s, r) => s + r.count, 0);
-                                const totalRevenue = data.reduce((s, r) => s + r.revenue, 0);
-                                const by7 = data.filter((r) => r.days <= 7).reduce((s, r) => ({ count: s.count + r.count, revenue: s.revenue + r.revenue }), { count: 0, revenue: 0 });
-                                const by14 = data.filter((r) => r.days <= 14).reduce((s, r) => ({ count: s.count + r.count, revenue: s.revenue + r.revenue }), { count: 0, revenue: 0 });
-                                const by30 = data.filter((r) => r.days <= 30).reduce((s, r) => ({ count: s.count + r.count, revenue: s.revenue + r.revenue }), { count: 0, revenue: 0 });
-                                return (
-                                    <div className="mt-6 grid grid-cols-1 sm:grid-cols-4 gap-4">
-                                        <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
-                                            <p className="text-xs font-medium text-indigo-800 uppercase">Primeros 7 días</p>
-                                            <p className="text-xl font-bold text-indigo-600">{by7.count} compras</p>
-                                            <p className="text-sm text-indigo-600">{formatCurrency(by7.revenue)}</p>
-                                            <p className="text-xs text-gray-700">{totalCount > 0 ? ((by7.count / totalCount) * 100).toFixed(1) : 0}% del total</p>
-                                        </div>
-                                        <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
-                                            <p className="text-xs font-medium text-indigo-800 uppercase">Primeros 14 días</p>
-                                            <p className="text-xl font-bold text-indigo-600">{by14.count} compras</p>
-                                            <p className="text-sm text-indigo-600">{formatCurrency(by14.revenue)}</p>
-                                            <p className="text-xs text-gray-700">{totalCount > 0 ? ((by14.count / totalCount) * 100).toFixed(1) : 0}% del total</p>
-                                        </div>
-                                        <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
-                                            <p className="text-xs font-medium text-indigo-800 uppercase">Primeros 30 días</p>
-                                            <p className="text-xl font-bold text-indigo-600">{by30.count} compras</p>
-                                            <p className="text-sm text-indigo-600">{formatCurrency(by30.revenue)}</p>
-                                            <p className="text-xs text-gray-700">{totalCount > 0 ? ((by30.count / totalCount) * 100).toFixed(1) : 0}% del total</p>
-                                        </div>
-                                        <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                                            <p className="text-xs font-medium text-gray-700 uppercase">Total</p>
-                                            <p className="text-xl font-bold text-gray-800">{totalCount} compras</p>
-                                            <p className="text-sm text-gray-700">{formatCurrency(totalRevenue)}</p>
-                                        </div>
-                                    </div>
-                                );
-                            })()}
+                            <div className="mt-6 grid grid-cols-1 sm:grid-cols-4 gap-4">
+                                <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
+                                    <p className="text-xs font-medium text-indigo-800 uppercase">Primeros 7 días</p>
+                                    <p className="text-xl font-bold text-indigo-600">{captationDaysSummary.by7.count} compras</p>
+                                    <p className="text-sm text-indigo-600">{formatCurrency(captationDaysSummary.by7.revenue)}</p>
+                                    <p className="text-xs text-gray-700">{captationDaysSummary.totalCount > 0 ? ((captationDaysSummary.by7.count / captationDaysSummary.totalCount) * 100).toFixed(1) : 0}% del total</p>
+                                </div>
+                                <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
+                                    <p className="text-xs font-medium text-indigo-800 uppercase">Primeros 14 días</p>
+                                    <p className="text-xl font-bold text-indigo-600">{captationDaysSummary.by14.count} compras</p>
+                                    <p className="text-sm text-indigo-600">{formatCurrency(captationDaysSummary.by14.revenue)}</p>
+                                    <p className="text-xs text-gray-700">{captationDaysSummary.totalCount > 0 ? ((captationDaysSummary.by14.count / captationDaysSummary.totalCount) * 100).toFixed(1) : 0}% del total</p>
+                                </div>
+                                <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
+                                    <p className="text-xs font-medium text-indigo-800 uppercase">Primeros 30 días</p>
+                                    <p className="text-xl font-bold text-indigo-600">{captationDaysSummary.by30.count} compras</p>
+                                    <p className="text-sm text-indigo-600">{formatCurrency(captationDaysSummary.by30.revenue)}</p>
+                                    <p className="text-xs text-gray-700">{captationDaysSummary.totalCount > 0 ? ((captationDaysSummary.by30.count / captationDaysSummary.totalCount) * 100).toFixed(1) : 0}% del total</p>
+                                </div>
+                                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                    <p className="text-xs font-medium text-gray-700 uppercase">Total</p>
+                                    <p className="text-xl font-bold text-gray-800">{captationDaysSummary.totalCount} compras</p>
+                                    <p className="text-sm text-gray-700">{formatCurrency(captationDaysSummary.totalRevenue)}</p>
+                                </div>
+                            </div>
                         </div>
                         )}
                         </>
@@ -995,273 +1364,27 @@ export default function DashboardClient({ initialTables }: { initialTables: stri
                     </div>
                 )}
 
-                {activeTab === 'traffic' && dashboardData.trafficTypeSummary && (() => {
-                    const ts = dashboardData.trafficTypeSummary;
-                    const tsp = dashboardData.trafficTypeSpend || { frio: 0, caliente: 0, otro: 0 };
-                    const roasFrio = tsp.frio > 0 ? ts.frio.revenue / tsp.frio : 0;
-                    const roasCaliente = tsp.caliente > 0 ? ts.caliente.revenue / tsp.caliente : 0;
-                    const totalVentas = ts.frio.sales + ts.caliente.sales + ts.otro.sales;
-                    const totalIngresos = ts.frio.revenue + ts.caliente.revenue + ts.otro.revenue;
-                    const totalGasto = tsp.frio + tsp.caliente + tsp.otro;
-                    const pctV = (n: number) => totalVentas > 0 ? ((n / totalVentas) * 100).toFixed(1) : '0';
-                    const pctI = (n: number) => totalIngresos > 0 ? ((n / totalIngresos) * 100).toFixed(1) : '0';
-                    const pctG = (n: number) => totalGasto > 0 ? ((n / totalGasto) * 100).toFixed(1) : '0';
-                    const barData = [
-                        { tipo: 'Tráfico Frío (PF)', ventas: ts.frio.sales, ingresos: ts.frio.revenue, gasto: tsp.frio, roas: roasFrio, pctVentas: pctV(ts.frio.sales), pctIngresos: pctI(ts.frio.revenue) },
-                        { tipo: 'Tráfico Caliente (PQ)', ventas: ts.caliente.sales, ingresos: ts.caliente.revenue, gasto: tsp.caliente, roas: roasCaliente, pctVentas: pctV(ts.caliente.sales), pctIngresos: pctI(ts.caliente.revenue) },
-                        ...(ts.otro.sales > 0 || ts.otro.revenue > 0 ? [{ tipo: 'Otro', ventas: ts.otro.sales, ingresos: ts.otro.revenue, gasto: tsp.otro, roas: tsp.otro > 0 ? ts.otro.revenue / tsp.otro : 0, pctVentas: pctV(ts.otro.sales), pctIngresos: pctI(ts.otro.revenue) }] : [])
-                    ];
-                    const captationByTraffic = dashboardData.captationByTrafficType;
-                    const chartData = captationByTraffic ? (() => {
-                        const allDates = new Set<string>();
-                        if (captationByTraffic.frio) captationByTraffic.frio.forEach((r: any) => allDates.add(r.date));
-                        if (captationByTraffic.caliente) captationByTraffic.caliente.forEach((r: any) => allDates.add(r.date));
-                        if (captationByTraffic.otro) captationByTraffic.otro.forEach((r: any) => allDates.add(r.date));
-                        const byDate: Record<string, any> = {};
-                        for (const d of Array.from(allDates).sort()) {
-                            byDate[d] = { date: d, label: formatDateShort(d), frio_sales: 0, caliente_sales: 0, frio_revenue: 0, caliente_revenue: 0 };
-                        }
-                        (captationByTraffic.frio || []).forEach((r: any) => { if (byDate[r.date]) { byDate[r.date].frio_sales = r.sales; byDate[r.date].frio_revenue = r.revenue; } });
-                        (captationByTraffic.caliente || []).forEach((r: any) => { if (byDate[r.date]) { byDate[r.date].caliente_sales = r.sales; byDate[r.date].caliente_revenue = r.revenue; } });
-                        return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
-                    })() : [];
-                    const adsWithTipo = Object.entries(dashboardData.ads || {}).flatMap(([adKey, ad]: [string, any]) => {
-                        if (adKey === 'organica') return [];
-                        return (ad.segmentations || []).map((s: any) => {
-                            const c = String(s.campaign_name || '').toUpperCase();
-                            const tipo = c.includes('PQ') ? 'Caliente (PQ)' : c.includes('PF') ? 'Frío (PF)' : 'Otro';
-                            return { anuncio: ad.ad_name_display, segmentacion: s.name, tipo, ventas: s.sales, ingresos: s.revenue, gasto: s.spend_allocated || 0, roas: (s.spend_allocated || 0) > 0 ? s.revenue / (s.spend_allocated || 0) : 0 };
-                        });
-                    });
-                    return (
-                        <div className="space-y-6 text-gray-900">
-                            <h3 className="text-lg font-semibold text-indigo-800">Tráfico Frío (PF) vs Caliente (PQ)</h3>
-                            <p className="text-sm text-gray-700">Comparativa de ventas, ingresos, gasto y ROAS por tipo de tráfico. PF = tráfico frío, PQ = tráfico caliente.</p>
-                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
-                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                                    <h4 className="text-xs font-medium text-blue-800 uppercase">Frío - Ventas</h4>
-                                    <p className="text-xl font-bold text-blue-600">{ts.frio.sales} <span className="text-blue-500 text-sm font-normal">({pctV(ts.frio.sales)}%)</span></p>
-                                </div>
-                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                                    <h4 className="text-xs font-medium text-blue-800 uppercase">Frío - Ingresos</h4>
-                                    <p className="text-lg font-bold text-blue-600">{formatCurrency(ts.frio.revenue)} <span className="text-blue-500 text-sm font-normal">({pctI(ts.frio.revenue)}%)</span></p>
-                                </div>
-                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                                    <h4 className="text-xs font-medium text-blue-800 uppercase">Frío - Gasto</h4>
-                                    <p className="text-lg font-bold text-blue-600">{formatCurrency(tsp.frio)} <span className="text-blue-500 text-sm font-normal">({pctG(tsp.frio)}%)</span></p>
-                                </div>
-                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                                    <h4 className="text-xs font-medium text-blue-800 uppercase">Frío - ROAS</h4>
-                                    <p className="text-lg font-bold text-blue-600">{roasFrio.toFixed(2)}x</p>
-                                </div>
-                                <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
-                                    <h4 className="text-xs font-medium text-orange-800 uppercase">Caliente - Ventas</h4>
-                                    <p className="text-xl font-bold text-orange-600">{ts.caliente.sales} <span className="text-orange-500 text-sm font-normal">({pctV(ts.caliente.sales)}%)</span></p>
-                                </div>
-                                <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
-                                    <h4 className="text-xs font-medium text-orange-800 uppercase">Caliente - Ingresos</h4>
-                                    <p className="text-lg font-bold text-orange-600">{formatCurrency(ts.caliente.revenue)} <span className="text-orange-500 text-sm font-normal">({pctI(ts.caliente.revenue)}%)</span></p>
-                                </div>
-                                <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
-                                    <h4 className="text-xs font-medium text-orange-800 uppercase">Caliente - Gasto</h4>
-                                    <p className="text-lg font-bold text-orange-600">{formatCurrency(tsp.caliente)} <span className="text-orange-500 text-sm font-normal">({pctG(tsp.caliente)}%)</span></p>
-                                </div>
-                                <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
-                                    <h4 className="text-xs font-medium text-orange-800 uppercase">Caliente - ROAS</h4>
-                                    <p className="text-lg font-bold text-orange-600">{roasCaliente.toFixed(2)}x</p>
-                                </div>
-                            </div>
-                            <div className="bg-white rounded-lg shadow p-6">
-                                <h4 className="font-semibold mb-4 text-gray-900">Comparativa Ventas e Ingresos</h4>
-                                <div className="h-[300px]">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={barData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                            <XAxis dataKey="tipo" tick={{ fontSize: 11 }} />
-                                            <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
-                                            <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
-                                            <Tooltip content={({ active, payload }) => {
-                                                if (!active || !payload?.length) return null;
-                                                const d = payload[0]?.payload;
-                                                return (
-                                                    <div className="bg-white p-3 rounded-lg shadow-lg border text-sm text-gray-900">
-                                                        <p className="font-semibold">{d?.tipo}</p>
-                                                        <p>Ventas: <strong>{d?.ventas}</strong> ({d?.pctVentas}%)</p>
-                                                        <p>Ingresos: <strong>{formatCurrency(d?.ingresos ?? 0)}</strong> ({d?.pctIngresos}%)</p>
-                                                        <p>Gasto: <strong>{formatCurrency(d?.gasto ?? 0)}</strong></p>
-                                                        <p>ROAS: <strong>{d?.roas?.toFixed(2)}x</strong></p>
-                                                    </div>
-                                                );
-                                            }} />
-                                            <Legend />
-                                            <Bar yAxisId="left" dataKey="ventas" name="Ventas" fill="#6366f1" radius={[4, 4, 0, 0]} />
-                                            <Bar yAxisId="right" dataKey="ingresos" name="Ingresos" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                </div>
-                            </div>
-                            {chartData.length > 0 && (
-                                <div className="bg-white rounded-lg shadow p-6">
-                                    <h4 className="font-semibold mb-4 text-gray-900">Evolución por Fecha</h4>
-                                    <div className="h-[300px]">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <ComposedChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-                                                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                                <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                                                <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
-                                                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
-                                                <Tooltip content={({ active, payload }) => {
-                                                    if (!active || !payload?.length) return null;
-                                                    const d = payload[0]?.payload;
-                                                    return (
-                                                        <div className="bg-white p-3 rounded-lg shadow-lg border text-sm text-gray-900">
-                                                            <p className="font-semibold">{d?.label}</p>
-                                                            <p>Frío ventas: <strong>{d?.frio_sales}</strong></p>
-                                                            <p>Caliente ventas: <strong>{d?.caliente_sales}</strong></p>
-                                                            <p>Frío ingresos: <strong>{formatCurrency(d?.frio_revenue ?? 0)}</strong></p>
-                                                            <p>Caliente ingresos: <strong>{formatCurrency(d?.caliente_revenue ?? 0)}</strong></p>
-                                                        </div>
-                                                    );
-                                                }} />
-                                                <Legend />
-                                                <Bar yAxisId="left" dataKey="frio_sales" name="Frío ventas" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                                                <Bar yAxisId="left" dataKey="caliente_sales" name="Caliente ventas" fill="#f97316" radius={[4, 4, 0, 0]} />
-                                                <Line yAxisId="right" type="monotone" dataKey="frio_revenue" name="Frío ingresos" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
-                                                <Line yAxisId="right" type="monotone" dataKey="caliente_revenue" name="Caliente ingresos" stroke="#f97316" strokeWidth={2} dot={{ r: 3 }} />
-                                            </ComposedChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </div>
-                            )}
-                            <div className="bg-white rounded-lg shadow overflow-hidden">
-                                <h4 className="font-semibold p-4 border-b bg-gray-50 text-gray-900">Desglose por Anuncio / Segmentación</h4>
-                                <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
-                                    <table className="w-full text-sm">
-                                        <thead className="bg-gray-50 sticky top-0">
-                                            <tr>
-                                                <th className="px-4 py-2 text-left font-semibold text-gray-800">Anuncio</th>
-                                                <th className="px-4 py-2 text-left font-semibold text-gray-800">Segmentación</th>
-                                                <th className="px-4 py-2 text-left font-semibold text-gray-800">Tipo</th>
-                                                <th className="px-4 py-2 text-right font-semibold text-gray-800">Ventas</th>
-                                                <th className="px-4 py-2 text-right font-semibold text-gray-800">Ingresos</th>
-                                                <th className="px-4 py-2 text-right font-semibold text-gray-800">Gasto</th>
-                                                <th className="px-4 py-2 text-right font-semibold text-gray-800">ROAS</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {adsWithTipo.sort((a, b) => b.ingresos - a.ingresos).map((row, i) => (
-                                                <tr key={i} className="border-t border-gray-100 hover:bg-gray-50">
-                                                    <td className="px-4 py-2 text-gray-900">{row.anuncio}</td>
-                                                    <td className="px-4 py-2 text-gray-900">{row.segmentacion}</td>
-                                                    <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded text-xs font-medium ${row.tipo.includes('Frío') ? 'bg-blue-100 text-blue-800' : row.tipo.includes('Caliente') ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'}`}>{row.tipo}</span></td>
-                                                    <td className="px-4 py-2 text-right text-gray-900">{row.ventas}</td>
-                                                    <td className="px-4 py-2 text-right text-green-600">{formatCurrency(row.ingresos)}</td>
-                                                    <td className="px-4 py-2 text-right text-red-600">{formatCurrency(row.gasto)}</td>
-                                                    <td className="px-4 py-2 text-right text-indigo-600">{row.roas.toFixed(2)}x</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                    );
-                })()}
+                {activeTab === 'traffic' && dashboardData.trafficTypeSummary && (
+                    <TrafficTab
+                        trafficTypeSummary={dashboardData.trafficTypeSummary}
+                        trafficTypeSpend={dashboardData.trafficTypeSpend || { frio: 0, caliente: 0, otro: 0 }}
+                        captationByTrafficType={dashboardData.captationByTrafficType}
+                        ads={dashboardData.ads}
+                        formatCurrency={formatCurrency}
+                        formatDateShort={formatDateShort}
+                    />
+                )}
 
-                {activeTab === 'countries' && dashboardData.countryData && (() => {
-                    const cols = [
-                        { key: 'country', label: 'País', align: 'left' as const },
-                        { key: 'gasto', label: 'Gasto', align: 'right' as const },
-                        { key: 'roas', label: 'ROAS', align: 'right' as const },
-                        { key: 'ventas_organicas', label: 'Ventas Orgánicas', align: 'right' as const },
-                        { key: 'ventas_trackeadas', label: 'Ventas Trackeadas', align: 'right' as const },
-                        { key: 'total_ventas', label: 'Total Ventas', align: 'right' as const },
-                    ];
-                    const getSortVal = (row: any, k: string) =>
-                        k === 'total_ventas' ? (row.ventas_organicas ?? 0) + (row.ventas_trackeadas ?? 0) : row[k];
-                    const sorted = [...dashboardData.countryData].sort((a: any, b: any) => {
-                        const va = getSortVal(a, countrySortBy);
-                        const vb = getSortVal(b, countrySortBy);
-                        const cmp = typeof va === 'string'
-                            ? (va ?? '').localeCompare(vb ?? '')
-                            : (Number(va) ?? 0) - (Number(vb) ?? 0);
-                        return countrySortDir === 'asc' ? cmp : -cmp;
-                    });
-                    const toggleSort = (key: string) => {
-                        if (countrySortBy === key) setCountrySortDir(d => d === 'asc' ? 'desc' : 'asc');
-                        else { setCountrySortBy(key); setCountrySortDir('desc'); }
-                    };
-                    const totalGasto = dashboardData.countryData.reduce((s: number, r: any) => s + (r.gasto ?? 0), 0);
-                    const totalOrg = dashboardData.countryData.reduce((s: number, r: any) => s + (r.ventas_organicas ?? 0), 0);
-                    const totalTrack = dashboardData.countryData.reduce((s: number, r: any) => s + (r.ventas_trackeadas ?? 0), 0);
-                    const totalVentas = totalOrg + totalTrack;
-                    const roasGeneral = totalGasto > 0 ? totalTrack / totalGasto : 0;
-                    return (
-                    <div className="space-y-6 text-gray-900">
-                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-                            <div className="bg-white p-4 rounded-lg shadow text-center border-l-4 border-red-500">
-                                <h4 className="text-xs font-medium text-gray-600 uppercase">Total Gasto</h4>
-                                <p className="text-xl font-bold text-red-600 mt-1">{formatCurrency(totalGasto)}</p>
-                            </div>
-                            <div className="bg-white p-4 rounded-lg shadow text-center border-l-4 border-green-500">
-                                <h4 className="text-xs font-medium text-gray-600 uppercase">Ventas Orgánicas</h4>
-                                <p className="text-xl font-bold text-green-600 mt-1">{formatCurrency(totalOrg)}</p>
-                            </div>
-                            <div className="bg-white p-4 rounded-lg shadow text-center border-l-4 border-blue-500">
-                                <h4 className="text-xs font-medium text-gray-600 uppercase">Ventas Trackeadas</h4>
-                                <p className="text-xl font-bold text-blue-600 mt-1">{formatCurrency(totalTrack)}</p>
-                            </div>
-                            <div className="bg-white p-4 rounded-lg shadow text-center border-l-4 border-gray-700">
-                                <h4 className="text-xs font-medium text-gray-600 uppercase">Total Ventas</h4>
-                                <p className="text-xl font-bold text-gray-900 mt-1">{formatCurrency(totalVentas)}</p>
-                            </div>
-                            <div className={`bg-white p-4 rounded-lg shadow text-center border-l-4 ${roasGeneral >= 2 ? 'border-green-500' : roasGeneral >= 1 ? 'border-yellow-500' : 'border-red-500'}`}>
-                                <h4 className="text-xs font-medium text-gray-600 uppercase">ROAS General</h4>
-                                <p className={`text-xl font-bold mt-1 ${roasGeneral >= 2 ? 'text-green-600' : roasGeneral >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>{roasGeneral.toFixed(2)}x</p>
-                            </div>
-                        </div>
-                        <div className="bg-white rounded-lg shadow overflow-hidden">
-                            <h3 className="text-lg font-semibold p-4 border-b bg-indigo-50 text-indigo-900">Vista de Países</h3>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
-                                    <thead className="bg-gray-50">
-                                        <tr>
-                                            {cols.map(({ key, label, align }) => (
-                                                <th
-                                                    key={key}
-                                                    className={`px-4 py-3 font-semibold text-gray-800 cursor-pointer select-none hover:bg-gray-100 transition-colors ${align === 'right' ? 'text-right' : 'text-left'}`}
-                                                    onClick={() => toggleSort(key)}
-                                                >
-                                                    <span className="inline-flex items-center gap-1">
-                                                        {label}
-                                                        {countrySortBy === key && (
-                                                            <span className="text-indigo-600">{countrySortDir === 'asc' ? '↑' : '↓'}</span>
-                                                        )}
-                                                    </span>
-                                                </th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-200">
-                                        {sorted.map((row: any) => (
-                                            <tr key={row.country} className="hover:bg-gray-50">
-                                                <td className="px-4 py-3 font-medium text-gray-900">{row.country}</td>
-                                                <td className="px-4 py-3 text-right text-red-600">{formatCurrency(row.gasto)}</td>
-                                                <td className={`px-4 py-3 text-right font-bold ${row.roas >= 2 ? 'text-green-600' : row.roas >= 1 ? 'text-yellow-600' : 'text-red-600'}`}>
-                                                    {row.roas.toFixed(2)}x
-                                                </td>
-                                                <td className="px-4 py-3 text-right text-green-600">{formatCurrency(row.ventas_organicas)}</td>
-                                                <td className="px-4 py-3 text-right text-blue-600">{formatCurrency(row.ventas_trackeadas)}</td>
-                                                <td className="px-4 py-3 text-right font-semibold text-gray-900">{formatCurrency((row.ventas_organicas ?? 0) + (row.ventas_trackeadas ?? 0))}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                    );
-                })()}
+                {activeTab === 'countries' && dashboardData.countryData && (
+                    <CountriesTab
+                        countryData={dashboardData.countryData}
+                        countrySortBy={countrySortBy}
+                        countrySortDir={countrySortDir}
+                        setCountrySortBy={setCountrySortBy}
+                        setCountrySortDir={setCountrySortDir}
+                        formatCurrency={formatCurrency}
+                    />
+                )}
             </div>
         </div>
     );
