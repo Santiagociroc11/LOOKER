@@ -4,9 +4,6 @@ import pool from '@/lib/db';
 import { processSpendCSV, processCountryCSV, normalizeAdName, cleanDisplayName } from '@/lib/utils/csvProcessor';
 import { buildQualityAnalysis } from '@/lib/utils/qualityAnalysis';
 import { RowDataPacket } from 'mysql2';
-import { syncMySQLToMongo } from '@/lib/mongoSync';
-import { storeSpendFromCSV, storeCountrySpendFromCSV, getSpendByDate } from '@/lib/mongoSpend';
-import { aggregateAdsFromMongo } from '@/lib/mongoAggregations';
 
 export async function getAvailableTables() {
     try {
@@ -552,70 +549,214 @@ export async function processDashboardData(formData: FormData) {
         throw new Error('CSV es requerido');
     }
 
-    // 1. Sync MySQL → MongoDB (al procesar)
-    await syncMySQLToMongo(baseTable, salesTable);
-
     const csvContent = await csvFile.text();
     const spendResult = await processSpendCSV(csvContent, exchangeRate);
 
     const segmentationsData = spendResult.segmentations;
     const spendMapping = spendResult.mapping;
+    const spendByDate = spendResult.spendByDate;
 
     if (Object.keys(segmentationsData).length === 0) {
         throw new Error('No se pudieron procesar los datos de gastos del archivo CSV.');
     }
 
-    // 2. Guardar spend en MongoDB
-    const configId = `${baseTable}|${salesTable}`;
-    const reportId = await storeSpendFromCSV(csvContent, configId, exchangeRate, multiplyRevenue);
-
-    if (countryCsvFile && countryCsvFile.size > 0) {
-        const countryCsvContent = await countryCsvFile.text();
-        await storeCountrySpendFromCSV(countryCsvContent, reportId, configId, exchangeRate);
-    }
-
-    // 3. Obtener spendByDate desde MongoDB (para captation)
-    const spendByDate = await getSpendByDate(reportId);
-
-    // 4. Agregación desde MongoDB (cálculos en BD)
-    let ads = await aggregateAdsFromMongo(baseTable, salesTable, reportId, multiplyRevenue, spendMapping);
-
+    const revenueData = await getRevenueData(baseTable, salesTable, multiplyRevenue);
     const organicSalesData = await getOrganicSales(salesTable, multiplyRevenue);
 
+    // buildInteractiveData Logic
+    const ads: Record<string, any> = {};
+
     if (organicSalesData && organicSalesData.total_sales > 0) {
-        ads = {
-            organica: {
-                ad_name_display: 'Orgánica',
-                total_revenue: parseFloat(organicSalesData.total_revenue),
-                total_leads: 0,
-                total_sales: parseInt(organicSalesData.total_sales, 10),
-                total_spend: 0,
-                roas: 0,
+        ads['organica'] = {
+            ad_name_display: 'Orgánica',
+            total_revenue: parseFloat(organicSalesData.total_revenue),
+            total_leads: 0,
+            total_sales: parseInt(organicSalesData.total_sales, 10),
+            total_spend: 0,
+            roas: 0,
+            profit: parseFloat(organicSalesData.total_revenue),
+            segmentations: [{
+                name: 'Orgánica',
+                campaign_name: 'Orgánica',
+                ad_id: '',
+                revenue: parseFloat(organicSalesData.total_revenue),
+                leads: 0,
+                sales: parseInt(organicSalesData.total_sales, 10),
+                spend_allocated: 0,
                 profit: parseFloat(organicSalesData.total_revenue),
-                segmentations: [{
-                    name: 'Orgánica',
-                    campaign_name: 'Orgánica',
-                    ad_id: '',
-                    revenue: parseFloat(organicSalesData.total_revenue),
-                    leads: 0,
-                    sales: parseInt(organicSalesData.total_sales, 10),
-                    spend_allocated: 0,
-                    profit: parseFloat(organicSalesData.total_revenue),
-                    cpl: 0,
-                    conversion_rate: 0
-                }]
-            },
-            ...ads
+                cpl: 0,
+                conversion_rate: 0
+            }]
         };
     }
 
-    let totalRevenueAll = 0;
-    let totalSpendAll = 0;
-    for (const [adKey, adData] of Object.entries<any>(ads)) {
-        if (adKey !== 'organica') totalRevenueAll += adData.total_revenue;
-        totalSpendAll += adData.total_spend;
+    if (revenueData) {
+        for (const revItem of revenueData) {
+            const adNameOriginal = revItem.ANUNCIO;
+            const adNameNormalized = revItem.ANUNCIO_NORMALIZED;
+            const segmentationOriginal = revItem.SEGMENTACION;
+            const segmentationNormalized = revItem.SEGMENTACION_NORMALIZED;
+            const campaignName = revItem.CAMPAÑA || '';
+            const revenue = parseFloat(revItem.total_revenue);
+            const leads = parseInt(revItem.total_leads, 10);
+            const sales = parseInt(revItem.total_sales, 10);
+
+            if (!ads[adNameNormalized]) {
+                const displayName = spendMapping[adNameNormalized]
+                    ? cleanDisplayName(spendMapping[adNameNormalized])
+                    : cleanDisplayName(adNameOriginal);
+
+                ads[adNameNormalized] = {
+                    ad_name_display: displayName,
+                    total_revenue: 0,
+                    total_leads: 0,
+                    total_sales: 0,
+                    total_spend: 0,
+                    roas: 0,
+                    segmentations: []
+                };
+            }
+
+            let segFound = false;
+            for (const existingSeg of ads[adNameNormalized].segmentations) {
+                if (normalizeAdName(existingSeg.name) === segmentationNormalized) {
+                    const uniqueBdKey = `${adNameNormalized}|${segmentationNormalized}|${revenue}|${leads}`;
+                    existingSeg.processed_bd_keys = existingSeg.processed_bd_keys || [];
+
+                    if (!existingSeg.processed_bd_keys.includes(uniqueBdKey)) {
+                        existingSeg.revenue += revenue;
+                        existingSeg.leads += leads;
+                        existingSeg.sales += sales;
+                        existingSeg.processed_bd_keys.push(uniqueBdKey);
+                    }
+                    existingSeg.campaign_name = campaignName;
+                    existingSeg.conversion_rate = existingSeg.leads > 0 ? (existingSeg.sales / existingSeg.leads) * 100 : 0;
+                    segFound = true;
+                    break;
+                }
+            }
+
+            if (!segFound) {
+                ads[adNameNormalized].segmentations.push({
+                    name: cleanDisplayName(segmentationOriginal),
+                    campaign_name: campaignName,
+                    ad_id: revItem.AD_ID || '',
+                    revenue,
+                    leads,
+                    sales,
+                    spend_allocated: 0,
+                    profit: revenue,
+                    cpl: 0,
+                    conversion_rate: leads > 0 ? (sales / leads) * 100 : 0
+                });
+            }
+
+            ads[adNameNormalized].total_revenue += revenue;
+            ads[adNameNormalized].total_leads += leads;
+            ads[adNameNormalized].total_sales += sales;
+        }
     }
 
+    // Assign Spends
+    for (const segData of Object.values(segmentationsData)) {
+        const adNameNormalized = segData.ad_name_normalized;
+        const segmentationName = segData.segmentation_name;
+        const segmentationNormalized = normalizeAdName(segmentationName);
+        const spend = segData.spend;
+        const adIdFromCsv = segData.ad_id;
+
+        const matchingAdKey = findMatchingAdKey(segData, ads);
+
+        if (ads[matchingAdKey]) {
+            let segFound = false;
+            for (const existingSeg of ads[matchingAdKey].segmentations) {
+                if (adIdFromCsv && existingSeg.ad_id && adIdFromCsv === existingSeg.ad_id) {
+                    existingSeg.spend_allocated += spend;
+                    existingSeg.profit = existingSeg.revenue - existingSeg.spend_allocated;
+                    existingSeg.cpl = existingSeg.leads > 0 ? existingSeg.spend_allocated / existingSeg.leads : 0;
+                    segFound = true;
+                    break;
+                } else if (normalizeAdName(existingSeg.name) === segmentationNormalized) {
+                    existingSeg.spend_allocated += spend;
+                    existingSeg.profit = existingSeg.revenue - existingSeg.spend_allocated;
+                    existingSeg.cpl = existingSeg.leads > 0 ? existingSeg.spend_allocated / existingSeg.leads : 0;
+                    segFound = true;
+                    break;
+                }
+            }
+
+            if (!segFound) {
+                ads[matchingAdKey].segmentations.push({
+                    name: cleanDisplayName(segmentationName),
+                    campaign_name: segData.campaign_name,
+                    ad_id: adIdFromCsv,
+                    revenue: 0,
+                    leads: 0,
+                    sales: 0,
+                    spend_allocated: spend,
+                    profit: -spend,
+                    cpl: 0,
+                    conversion_rate: 0
+                });
+            }
+
+            ads[matchingAdKey].total_spend += spend;
+        } else {
+            ads[adNameNormalized] = {
+                ad_name_display: cleanDisplayName(segData.ad_name_original),
+                total_revenue: 0,
+                total_leads: 0,
+                total_sales: 0,
+                total_spend: spend,
+                roas: 0,
+                segmentations: [{
+                    name: cleanDisplayName(segmentationName),
+                    campaign_name: segData.campaign_name,
+                    ad_id: adIdFromCsv,
+                    revenue: 0,
+                    leads: 0,
+                    sales: 0,
+                    spend_allocated: spend,
+                    profit: -spend,
+                    cpl: 0,
+                    conversion_rate: 0
+                }]
+            };
+        }
+    }
+
+    // Calculate ROAS and general utility
+    let totalRevenueAll = 0;
+    let totalSpendAll = 0;
+
+    for (const [adKey, adData] of Object.entries<any>(ads)) {
+        adData.total_spend = parseFloat(Number(adData.total_spend).toFixed(2));
+        adData.total_revenue = parseFloat(Number(adData.total_revenue).toFixed(2));
+        if (adData.total_spend > 0) {
+            adData.roas = adData.total_revenue / adData.total_spend;
+        } else {
+            adData.roas = 0;
+        }
+        adData.profit = adData.total_revenue - adData.total_spend;
+
+        if (adKey !== 'organica') {
+            totalRevenueAll += adData.total_revenue;
+        }
+        totalSpendAll += adData.total_spend;
+
+        for (const seg of adData.segmentations) {
+            if (seg.profit === undefined || seg.profit === null) {
+                seg.profit = seg.revenue - (seg.spend_allocated || 0);
+            }
+            if (seg.cpl === undefined || seg.cpl === null) {
+                seg.cpl = (seg.leads > 0 && (seg.spend_allocated || 0) > 0) ? (seg.spend_allocated || 0) / seg.leads : 0;
+            }
+        }
+
+        adData.segmentations.sort((a: any, b: any) => b.revenue - a.revenue);
+    }
+
+    // Sort Ads
     const sortedAds = Object.entries(ads).sort((a: any, b: any) => b[1].profit - a[1].profit);
 
     const qualityLeadData = await getQualityLeadData(baseTable, salesTable, multiplyRevenue);
