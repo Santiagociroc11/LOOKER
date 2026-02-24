@@ -294,7 +294,7 @@ export async function getPurchasesByDaysSinceRegistrationFromMongo(
     return rows.length > 0 ? rows : null;
 }
 
-// --- Sales by registration date ---
+// --- Sales by registration date (optimizado: 1 $lookup + $facet en vez de 2 pipelines) ---
 export async function getSalesByRegistrationDateFromMongo(
     configId: string,
     reportId: ObjectId,
@@ -305,96 +305,85 @@ export async function getSalesByRegistrationDateFromMongo(
     const spendCol = db.collection('spend_data');
     const mult = multiplyRevenue ? 2 : 1;
 
-    const spendByDate: Record<string, number> = {};
-    const spendCursor = spendCol.aggregate([
-        { $match: { report_id: reportId, is_daily: true } },
-        {
-            $group: {
-                _id: { day: { $dateToString: { format: '%Y-%m-%d', date: '$day' } }, ad: '$ad_name_normalized', seg: '$segmentation_normalized' },
-                amount: { $sum: '$amount_spent' }
-            }
-        }
+    const [spendDailyResult, spendTotalResult, facetResult] = await Promise.all([
+        spendCol.aggregate([
+            { $match: { report_id: reportId, is_daily: true } },
+            { $group: { _id: { day: { $dateToString: { format: '%Y-%m-%d', date: '$day' } }, ad: '$ad_name_normalized', seg: '$segmentation_normalized' }, amount: { $sum: '$amount_spent' } } }
+        ]).toArray(),
+        spendCol.aggregate([
+            { $match: { report_id: reportId, is_daily: { $ne: true } } },
+            { $group: { _id: { ad: '$ad_name_normalized', seg: '$segmentation_normalized' }, amount: { $sum: '$amount_spent' } } }
+        ]).toArray(),
+        leadsCol.aggregate([
+            { $match: { config_id: configId, fecha_registro: { $exists: true, $ne: null } } },
+            { $addFields: { fecha_str: { $dateToString: { format: '%Y-%m-%d', date: '$fecha_registro' } } } },
+            {
+                $lookup: {
+                    from: 'sales',
+                    let: { cid: '$cliente_id' },
+                    pipeline: [
+                        { $match: { $expr: { $eq: ['$cliente_id', '$$cid'] }, config_id: configId } },
+                        { $group: { _id: null, cnt: { $sum: 1 }, rev: { $sum: { $multiply: ['$monto', mult] } } } }
+                    ],
+                    as: 's'
+                }
+            },
+            {
+                $facet: {
+                    main: [
+                        {
+                            $group: {
+                                _id: '$fecha_str',
+                                total_leads: { $sum: 1 },
+                                total_sales: { $sum: { $ifNull: [{ $arrayElemAt: ['$s.cnt', 0] }, 0] } },
+                                total_revenue: { $sum: { $ifNull: [{ $arrayElemAt: ['$s.rev', 0] }, 0] } }
+                            }
+                        },
+                        { $sort: { _id: 1 } }
+                    ],
+                    ads: [
+                        { $match: { anuncio_normalized: { $ne: '' } } },
+                        {
+                            $group: {
+                                _id: { fecha: '$fecha_str', an: '$anuncio', seg: '$segmentacion' },
+                                leads: { $sum: 1 },
+                                sales: { $sum: { $ifNull: [{ $arrayElemAt: ['$s.cnt', 0] }, 0] } },
+                                revenue: { $sum: { $ifNull: [{ $arrayElemAt: ['$s.rev', 0] }, 0] } }
+                            }
+                        }
+                    ]
+                }
+            },
+            { $limit: 1 }
+        ] as object[], { allowDiskUse: true }).next()
     ]);
-    for await (const d of spendCursor) {
+
+    const spendByDate: Record<string, number> = {};
+    for (const d of spendDailyResult) {
         spendByDate[`${d._id.day}|${d._id.ad}|${d._id.seg}`] = d.amount;
     }
-
-    const mainCursor = leadsCol.aggregate([
-        { $match: { config_id: configId, fecha_registro: { $exists: true, $ne: null } } },
-        {
-            $addFields: {
-                fecha_str: { $dateToString: { format: '%Y-%m-%d', date: '$fecha_registro' } }
-            }
-        },
-        {
-            $lookup: {
-                from: 'sales',
-                let: { cid: '$cliente_id' },
-                pipeline: [
-                    { $match: { $expr: { $eq: ['$cliente_id', '$$cid'] }, config_id: configId } },
-                    { $group: { _id: null, cnt: { $sum: 1 }, rev: { $sum: { $multiply: ['$monto', mult] } } } }
-                ],
-                as: 's'
-            }
-        },
-        {
-            $group: {
-                _id: '$fecha_str',
-                total_leads: { $sum: 1 },
-                total_sales: { $sum: { $ifNull: [{ $arrayElemAt: ['$s.cnt', 0] }, 0] } },
-                total_revenue: { $sum: { $ifNull: [{ $arrayElemAt: ['$s.rev', 0] }, 0] } }
-            }
-        },
-        { $sort: { _id: 1 } }
-    ] as object[], { allowDiskUse: true });
-
-    const mainData: { date: string; leads: number; sales: number; revenue: number; gasto: number; cpl: number }[] = [];
-    for await (const doc of mainCursor) {
-        mainData.push({
-            date: doc._id,
-            leads: doc.total_leads,
-            sales: doc.total_sales,
-            revenue: doc.total_revenue,
-            gasto: 0,
-            cpl: 0
-        });
+    const spendByAdSeg: Record<string, number> = {};
+    for (const d of spendTotalResult) {
+        spendByAdSeg[`${d._id.ad}|${d._id.seg}`] = d.amount;
     }
 
-    const adsCursor = leadsCol.aggregate([
-        { $match: { config_id: configId, fecha_registro: { $exists: true, $ne: null }, anuncio_normalized: { $ne: '' } } },
-        {
-            $addFields: {
-                fecha_str: { $dateToString: { format: '%Y-%m-%d', date: '$fecha_registro' } }
-            }
-        },
-        {
-            $lookup: {
-                from: 'sales',
-                let: { cid: '$cliente_id' },
-                pipeline: [
-                    { $match: { $expr: { $eq: ['$cliente_id', '$$cid'] }, config_id: configId } },
-                    { $group: { _id: null, cnt: { $sum: 1 }, rev: { $sum: { $multiply: ['$monto', mult] } } } }
-                ],
-                as: 's'
-            }
-        },
-        {
-            $group: {
-                _id: { fecha: '$fecha_str', an: '$anuncio', seg: '$segmentacion' },
-                leads: { $sum: 1 },
-                sales: { $sum: { $ifNull: [{ $arrayElemAt: ['$s.cnt', 0] }, 0] } },
-                revenue: { $sum: { $ifNull: [{ $arrayElemAt: ['$s.rev', 0] }, 0] } }
-            }
-        }
-    ] as object[], { allowDiskUse: true });
+    const mainData = (facetResult?.main || []).map((doc: { _id: string; total_leads: number; total_sales: number; total_revenue: number }) => ({
+        date: doc._id,
+        leads: doc.total_leads,
+        sales: doc.total_sales,
+        revenue: doc.total_revenue,
+        gasto: 0,
+        cpl: 0
+    }));
 
     const adsByDate: Record<string, { anuncio: string; segmentacion: string; leads: number; sales: number; revenue: number; gasto: number; roas: number }[]> = {};
-    for await (const doc of adsCursor) {
+    for (const doc of facetResult?.ads || []) {
         const dateStr = doc._id.fecha;
         const anuncio = doc._id.an || 'Sin anuncio';
         const segmentacion = doc._id.seg || 'Sin segmentación';
-        const gastoKey = `${dateStr}|${normalizeAdName(anuncio)}|${normalizeAdName(segmentacion)}`;
-        const gasto = spendByDate[gastoKey] ?? 0;
+        const adSegKey = `${normalizeAdName(anuncio)}|${normalizeAdName(segmentacion)}`;
+        const gastoKey = `${dateStr}|${adSegKey}`;
+        const gasto = spendByDate[gastoKey] ?? spendByAdSeg[adSegKey] ?? 0;
         const rev = doc.revenue || 0;
         const roas = gasto > 0 ? rev / gasto : 0;
         if (!adsByDate[dateStr]) adsByDate[dateStr] = [];
@@ -409,7 +398,7 @@ export async function getSalesByRegistrationDateFromMongo(
         });
     }
 
-    return mainData.map((row) => {
+    return mainData.map((row: { date: string; leads: number; sales: number; revenue: number; gasto: number; cpl: number }) => {
         const ads = adsByDate[row.date] || [];
         const gasto = ads.reduce((s, a) => s + a.gasto, 0);
         const cpl = row.leads > 0 ? gasto / row.leads : 0;
